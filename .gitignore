@@ -1,0 +1,48 @@
+# --- Python General ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
+# Common names for virtual envs
+venv/
+env/
+.venv/
+.env/
+
+# --- Environment Variables (CRITICAL) ---
+# Never commit your secrets/API keys
+.env
+.env.local
+.env.*.local
+
+# --- Distribution / Packaging ---
+dist/
+build/
+*.egg-info/
+
+# --- Unit Testing / Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# --- IDE / Editor Settings ---
+# VS Code
+.vscode/
+# PyCharm / IntelliJ
+.idea/
+# Mac OS
+.DS_Store
+
+# --- Database ---
+# If you are using SQLite locally, ignore the db file
+*.sqlite3
+*.db
+
+# --- Project Specific Structure ---
+# Ignores pycache in all subdirectories of app/
+app/**/__pycache__/
+
+# --- Logs ---
+*.log
