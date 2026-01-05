@@ -1,0 +1,16 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.9.2
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+sqlalchemy==2.0.36
+psycopg[binary]==3.3.2
+# greenlet 3.0.3 fails to build on Python 3.13; 3.1.x ships wheels for 3.13
+greenlet==3.1.1
+transformers>=4.40.0
+torch==2.9.1
+deep_translator>=1.11.0
+py_vncorenlp>=0.1.4
+pillow
+einops
+timm
