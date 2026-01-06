@@ -3,12 +3,19 @@ Configuration settings for the application
 """
 from typing import Optional
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
 class Settings(BaseSettings):
     """Application settings"""
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(BASE_DIR / ".env"), case_sensitive=True, extra="ignore"
+    )
     
     # App settings
     APP_NAME: str = "Medicare AI Backend"

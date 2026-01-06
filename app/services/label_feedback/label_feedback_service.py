@@ -48,8 +48,15 @@ class LabelFeedbackService:
         """Ensure VnCoreNLP is available from Hugging Face."""
         try:
             print(f"Downloading/Loading VnCoreNLP from {self.VNCORENLP_REPO}...")
+            
+            # Use a local directory to avoid symlink issues with Java/VnCoreNLP
+            # and use system cache to avoid cluttering project directory
+            from pathlib import Path
+            local_model_dir = Path.home() / ".cache" / "medicare-ai" / "vncorenlp"
+            
             # Download/Get cache path for the VnCoreNLP model
-            model_dir = snapshot_download(repo_id=self.VNCORENLP_REPO, token=self.token)
+            # Using local_dir to force actual files instead of symlinks
+            model_dir = snapshot_download(repo_id=self.VNCORENLP_REPO, local_dir=local_model_dir, token=self.token)
             
             # VnCoreNLP expects the directory to contain VnCoreNLP-1.2.jar and models
             # We assume the repo structure matches what py_vncorenlp expects or contains the jar
