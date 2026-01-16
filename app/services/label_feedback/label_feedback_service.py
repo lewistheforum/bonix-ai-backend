@@ -22,7 +22,8 @@ class LabelFeedbackService:
         self.token = token if token else settings.HF_TOKEN
         
         # Label description model config
-        self.MODEL_PATH = "lewisnguyn/bonix-feedback-model-description"
+        # self.MODEL_PATH = "lewisnguyn/bonix-feedback-model-description"
+        self.MODEL_PATH = "lewisnguyn/bonix-feedback-model-description-v2"
         self.VNCORENLP_REPO = "lewisnguyn/bonix-model-vncorenlp"
         self.MAX_LENGTH = 256
         
@@ -115,7 +116,7 @@ class LabelFeedbackService:
         # Collect all predictions > 10%
         predictions = []
         for idx, prob in enumerate(probs):
-            if prob > 0.1:
+            if prob > 0.25:
                 label_name = id2label[str(idx)] if str(idx) in id2label else id2label[idx]
                 predictions.append({"label": label_name, "score": float(prob)})
         
