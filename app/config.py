@@ -1,7 +1,7 @@
 """
 Configuration settings for the application
 """
-from typing import Optional
+from typing import Optional, Literal
 
 from pathlib import Path
 
@@ -74,8 +74,25 @@ class Settings(BaseSettings):
     
     # AI/ML settings
     AI_MODEL_PATH: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None
-    HF_TOKEN: Optional[str] = Field(default="", validation_alias="HF_TOKEN")
+    OPENAI_API_KEY: Optional[str] = Field(default=None, validation_alias="OPENAI_API_KEY")
+    GOOGLE_API_KEY: Optional[str] = Field(default=None, validation_alias="GOOGLE_API_KEY")
+
+    
+    # RAG Chatbot settings
+    OPENAI_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small", validation_alias="OPENAI_EMBEDDING_MODEL")
+    GEMINI_EMBEDDING_MODEL: str = Field(default="models/text-embedding-004", validation_alias="GEMINI_EMBEDDING_MODEL")
+    
+    # Embedding settings
+    EMBEDDING_PROVIDER: Literal["openai", "gemini"] = Field(default="openai", validation_alias="EMBEDDING_PROVIDER")
+
+    OPENAI_CHAT_MODEL: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_CHAT_MODEL")
+    GEMINI_CHAT_MODEL: str = Field(default="gemini-2.5-flash", validation_alias="GEMINI_CHAT_MODEL")
+    CONVERSATION_MEMORY_WINDOW: int = Field(default=10, validation_alias="CONVERSATION_MEMORY_WINDOW")
+    
+    # Hybrid retrieval settings
+    VECTOR_SEARCH_WEIGHT: float = Field(default=0.7, validation_alias="VECTOR_SEARCH_WEIGHT")
+    KEYWORD_SEARCH_WEIGHT: float = Field(default=0.3, validation_alias="KEYWORD_SEARCH_WEIGHT")
+    RETRIEVAL_TOP_K: int = Field(default=5, validation_alias="RETRIEVAL_TOP_K")
     
     # CORS settings
     CORS_ORIGINS: list = ["*"]

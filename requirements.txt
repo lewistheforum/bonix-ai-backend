@@ -1,7 +1,7 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.9.2
-pydantic-settings==2.1.0
+pydantic-settings>=2.4.0
 python-multipart==0.0.6
 sqlalchemy==2.0.36
 psycopg[binary]==3.3.2
@@ -14,3 +14,27 @@ py_vncorenlp>=0.1.4
 pillow
 einops
 timm
+
+# LangChain ecosystem for RAG chatbot
+# Pinning versions to resolve dependency conflicts
+langchain==0.3.0
+langchain-core==0.3.0
+langchain-text-splitters==0.3.0
+langchain-openai==0.2.0
+langchain-google-genai>=2.0.0
+langchain-community==0.3.0
+langchain-postgres>=0.0.12
+langsmith==0.1.129
+openai>=1.50.0
+
+# Hugging Face Embeddings (Local/Free)
+sentence-transformers>=2.7.0
+langchain-huggingface>=0.0.1
+
+# Vector database
+pgvector>=0.3.0
+
+# Visualization
+scikit-learn>=1.5.0
+matplotlib>=3.9.0
+numpy>=1.26.0

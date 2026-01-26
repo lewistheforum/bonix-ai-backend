@@ -6,6 +6,7 @@ from app.api.v1.recommendation import recommendation_clinic
 from app.api.v1.chat_bot import chatbot
 from app.api.v1.bad_word import bad_word_detection
 from app.api.v1.label_feedback import label_feedback
+from app.api.rag_router import router as rag_router
 from app.config import settings
 from app.database import check_db_connection
 from app.utils.logger import logger
@@ -53,6 +54,13 @@ def create_application() -> FastAPI:
         tags=["Label Feedback"]
     )
     
+    # RAG Chatbot router
+    app.include_router(
+        rag_router,
+        prefix=f"{settings.API_V1_PREFIX}",
+        tags=["RAG Chatbot"]
+    )
+    
     @app.get("/")
     async def root():
         return {
@@ -68,14 +76,18 @@ def create_application() -> FastAPI:
     @app.on_event("startup")
     async def on_startup():
         """
-        Verify database connectivity when the application starts.
-        Logs a clear message on success or failure.
+        Verify database connectivity and initialize tables when the application starts.
         """
-        # Log whether DB credentials were loaded; mask password for safety
-        # masked_pwd = (
-        #     f"{settings.DB_PASSWORD[:2]}***" if settings.DB_PASSWORD else "<empty>"
-        # )
-       
+        # Ensure models are loaded so they are registered in Base.metadata
+        from app.models.ai_conversation import AIConversation
+        from app.models.ai_message import AIMessage
+        from app.models.knowledge_base import KnowledgeBase
+        from app.database import init_db
+
+        # Initialize database tables
+        await init_db()
+        logger.info("Database tables initialized")
+
         is_connected = await check_db_connection()
         if is_connected:
             logger.info("Database connected successfully at startup")
