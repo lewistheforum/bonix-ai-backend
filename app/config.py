@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     AI_MODEL_PATH: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = Field(default=None, validation_alias="OPENAI_API_KEY")
     GOOGLE_API_KEY: Optional[str] = Field(default=None, validation_alias="GOOGLE_API_KEY")
+    HF_TOKEN: Optional[str] = Field(default=None, validation_alias="HF_TOKEN")
 
     
     # RAG Chatbot settings
