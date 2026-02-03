@@ -6,7 +6,6 @@ Provides OpenAI embeddings for text vectorization using text-embedding-3-small m
 from typing import List, Optional, Union
 import asyncio
 
-from langchain_openai import OpenAIEmbeddings
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
@@ -39,18 +38,39 @@ class EmbeddingsService:
         self._embeddings = None
         
     @property
-    def embeddings(self) -> Union[OpenAIEmbeddings, GoogleGenerativeAIEmbeddings]:
+    def embeddings(self) -> Union[object, GoogleGenerativeAIEmbeddings]:
         """Lazy initialization of embeddings client"""
         if self._embeddings is None:
             if self.provider == "openai":
                 if not settings.OPENAI_API_KEY:
                     raise ValueError("OPENAI_API_KEY is not set in environment variables")
+                # Use the OpenAI SDK directly to avoid compatibility issues
+                # where upstream wrappers may pass unsupported kwargs (e.g. `proxies`).
+                from openai import OpenAI
                 
-                self._embeddings = OpenAIEmbeddings(
-                    model=self.model,
-                    openai_api_key=settings.OPENAI_API_KEY,
-                )
-                logger.info(f"Initialized OpenAI embeddings with model: {self.model}")
+                # Use the OpenAI SDK directly to avoid compatibility issues
+                # where upstream wrappers may pass unsupported kwargs (e.g. `proxies`).
+                self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+                class SimpleOpenAIEmbeddings:
+                    def __init__(self, client, model: str):
+                        self.client = client
+                        self.model = model
+
+                    def embed_query(self, text: str):
+                        # API v1.x usage
+                        resp = self.client.embeddings.create(model=self.model, input=text)
+                        # Response is an object, not a dict
+                        return resp.data[0].embedding
+
+                    def embed_documents(self, texts: list):
+                        # API v1.x usage
+                        resp = self.client.embeddings.create(model=self.model, input=texts)
+                        # Response is an object, not a dict
+                        return [d.embedding for d in resp.data]
+
+                self._embeddings = SimpleOpenAIEmbeddings(self.client, self.model)
+                logger.info(f"Initialized OpenAI embeddings (direct SDK v1) with model: {self.model}")
                 
             elif self.provider == "gemini":
                 if not settings.GOOGLE_API_KEY:
