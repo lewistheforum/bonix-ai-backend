@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import Column, String, Text, DateTime, Index, text
+from sqlalchemy import Column, String, Text, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
 from pgvector.sqlalchemy import Vector
 
@@ -43,23 +43,11 @@ class KnowledgeBase(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Indexes for efficient searching
-    __table_args__ = (
-        # Index for vector similarity search (using IVFFlat or HNSW)
-        Index(
-            'idx_knowledge_base_embedding',
-            embedding,
-            postgresql_using='ivfflat',
-            postgresql_with={'lists': 100},
-            postgresql_ops={'embedding': 'vector_cosine_ops'}
-        ),
-        # GIN index for full-text search
-        Index(
-            'idx_knowledge_base_search_vector',
-            text("to_tsvector('english', content)"),
-            postgresql_using='gin'
-        ),
-    )
+    # Table is managed by the primary backend server
+    # Use extend_existing to map to the existing table without recreating it
+    __table_args__ = {
+        'extend_existing': True
+    }
     
     def __repr__(self) -> str:
         return f"<KnowledgeBase(id={self._id}, content={self.content[:50]}...)>"

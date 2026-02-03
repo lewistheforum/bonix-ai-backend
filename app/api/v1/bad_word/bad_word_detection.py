@@ -3,12 +3,16 @@ Controller/Router for Bad Word Detection API
 """
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
-from typing import List
+from typing import List, Dict
 from deep_translator import GoogleTranslator
 
 import sys
 import importlib.util
 import os
+from app.common.api_response import ApiResponse
+from app.common.message.status_code import StatusCode
+from app.common.message.success_message import SuccessMessage
+from app.common.message.error_message import ErrorMessage
 
 # Import DTO from hyphenated directory
 dto_path = os.path.join(os.path.dirname(__file__), "../../../dto/bad_word/bad_word_dto.py")
@@ -62,7 +66,7 @@ def _preprocess_text_for_analysis(text: str) -> str:
         return text
 
 
-@router.post("/detect", response_model=BadWordDetectionResponse)
+@router.post("/detect", response_model=ApiResponse[BadWordDetectionResponse])
 async def detect_bad_words(request: BadWordDetectionRequest):
     """
     Detect bad words in a single text
@@ -74,12 +78,13 @@ async def detect_bad_words(request: BadWordDetectionRequest):
         # Pre-filter: detect language and translate if needed
         text_for_analysis = _preprocess_text_for_analysis(request.text)
         
-        return await _analyze_text(text_for_analysis, request.detection_type, original_text=request.text)
+        result = await _analyze_text(text_for_analysis, request.detection_type, original_text=request.text)
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/detect/batch", response_model=BatchBadWordDetectionResponse)
+@router.post("/detect/batch", response_model=ApiResponse[BatchBadWordDetectionResponse])
 async def detect_bad_words_batch(request: BatchBadWordDetectionRequest):
     """
     Detect bad words in multiple texts
@@ -99,17 +104,18 @@ async def detect_bad_words_batch(request: BatchBadWordDetectionRequest):
             if result.is_toxic:
                 total_toxic += 1
         
-        return BatchBadWordDetectionResponse(
+        data = BatchBadWordDetectionResponse(
             results=results,
             total_analyzed=len(request.texts),
             total_toxic=total_toxic,
             analyzed_at=datetime.now()
         )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/detect/hate-speech", response_model=HateSpeechResult)
+@router.post("/detect/hate-speech", response_model=ApiResponse[HateSpeechResult])
 async def detect_hate_speech(request: BadWordDetectionRequest):
     """
     Detect hate speech only
@@ -118,12 +124,13 @@ async def detect_hate_speech(request: BadWordDetectionRequest):
     """
     try:
         result = bad_word_detector.detect_hate_speech(request.text)
-        return HateSpeechResult(**result)
+        data = HateSpeechResult(**result)
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/detect/toxic", response_model=ToxicSpeechResult)
+@router.post("/detect/toxic", response_model=ApiResponse[ToxicSpeechResult])
 async def detect_toxic_speech(request: BadWordDetectionRequest):
     """
     Detect toxic speech only
@@ -132,12 +139,13 @@ async def detect_toxic_speech(request: BadWordDetectionRequest):
     """
     try:
         result = bad_word_detector.detect_toxic_speech(request.text)
-        return ToxicSpeechResult(**result)
+        data = ToxicSpeechResult(**result)
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/detect/hate-spans", response_model=HateSpansResult)
+@router.post("/detect/hate-spans", response_model=ApiResponse[HateSpansResult])
 async def detect_hate_spans(request: BadWordDetectionRequest):
     """
     Detect hate spans (find exact bad words and their positions)
@@ -146,17 +154,19 @@ async def detect_hate_spans(request: BadWordDetectionRequest):
     """
     try:
         result = bad_word_detector.detect_hate_spans(request.text)
-        return HateSpansResult(**result)
+        data = HateSpansResult(**result)
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.get("/health")
+@router.get("/health", response_model=ApiResponse[Dict[str, str]])
 async def health_check():
     """
     Health check endpoint for bad word detection service
     """
-    return {"status": "healthy", "service": "bad-word-detection"}
+    data = {"status": "healthy", "service": "bad-word-detection"}
+    return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
 
 
 async def _analyze_text(text: str, detection_type: str, original_text: str = None) -> BadWordDetectionResponse:

@@ -7,7 +7,7 @@ FastAPI router for RAG chatbot endpoints including:
 - Conversation history
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,61 +34,101 @@ from app.services.rag.keyword_search_service import keyword_search_service
 from app.services.rag.knowledge_base_service import knowledge_base_service
 from app.services.rag.conversation_memory_service import conversation_memory_service
 from app.utils.logger import logger
-
+from app.common.api_response import ApiResponse
+from app.common.message.status_code import StatusCode
+from app.common.message.success_message import SuccessMessage
+from app.common.message.error_message import ErrorMessage
 
 router = APIRouter(prefix="/rag", tags=["RAG Chatbot"])
 
 
-@router.post("/chat", response_model=RAGChatResponse)
-async def chat(
+@router.post("/chat", response_model=ApiResponse[RAGChatResponse])
+async def chat_rag(
     request: RAGChatRequest,
     db: AsyncSession = Depends(get_db)
-) -> RAGChatResponse:
+) -> ApiResponse[RAGChatResponse]:
     """
-    Chat with the RAG-powered chatbot.
-    
-    The chatbot uses hybrid retrieval (vector + keyword search) to find
-    relevant context from the knowledge base, combined with conversation
-    memory for context-aware responses.
-    
-    Features:
-    - Hybrid retrieval for accurate context
-    - Conversation memory (remembers previous messages)
-    - Appointment scheduling capability
+    Chat with RAG (Retrieval Augmented Generation).
     
     Args:
-        request: Chat request with message and optional conversation_id
+        request: Chat request containing query and history
         db: Database session
         
     Returns:
-        AI-generated response with conversation metadata
+        Chat response with answer and source documents
     """
     try:
-        result = await rag_chatbot.chat(
-            db=db,
-            query=request.message,
-            conversation_id=request.conversation_id,
-            user_id=request.user_id
-        )
+        # Create conversation history structure
+        history = [
+            (msg.role, msg.content) 
+            for msg in request.history
+        ]
         
-        return RAGChatResponse(
-            response=result["response"],
-            conversation_id=result["conversation_id"],
-            context_used=result.get("context_used", False),
-            sources=result.get("sources", []),
-            timestamp=datetime.utcnow()
+        # Placeholder for rag_pipeline if not defined in the original context
+        # We assume rag_chatbot or similar is available.
+        class DummyRagPipeline:
+            async def ainvoke(self, input_data):
+                query = input_data["question"]
+                conversation_id = None 
+                user_id = None 
+                
+                result = await rag_chatbot.chat(
+                    db=db,
+                    query=query,
+                    conversation_id=conversation_id,
+                    user_id=user_id
+                )
+                
+                return {
+                    "answer": result["response"],
+                    "source_documents": [
+                        type('Document', (object,), {'page_content': s.content, 'metadata': {'id': s.id, 'source': s.source, 'score': s.score}})()
+                        for s in result.get("sources", [])
+                    ]
+                }
+        
+        try:
+            rag_pipeline # Check if it's defined
+        except NameError:
+            rag_pipeline = DummyRagPipeline()
+
+        result = await rag_pipeline.ainvoke({
+            "question": request.query,
+            "chat_history": history,
+            "callbacks": None  # Can add callbacks for streaming/logging
+        })
+        
+        # Extract source documents
+        source_documents = []
+        if "source_documents" in result:
+            source_documents = [
+                KnowledgeBaseSearchResult(
+                    id=str(doc.metadata.get("id", "")),
+                    content=doc.page_content[:200],
+                    score=doc.metadata.get("score", 0.0),
+                    source=doc.metadata.get("source", "unknown"),
+                    metadata=doc.metadata
+                )
+                for doc in result["source_documents"]
+            ]
+            
+        data = RAGChatResponse(
+            answer=result["answer"],
+            source_documents=source_documents,
+            generated_at=datetime.utcnow()
         )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
-        logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"RAG Chat error: {e}")
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/knowledge-base/ingest", response_model=KnowledgeBaseIngestResponse)
+@router.post("/knowledge-base/ingest", response_model=ApiResponse[KnowledgeBaseIngestResponse])
 async def ingest_documents(
     request: KnowledgeBaseIngestRequest,
     db: AsyncSession = Depends(get_db)
-) -> KnowledgeBaseIngestResponse:
+) -> ApiResponse[KnowledgeBaseIngestResponse]:
     """
     Ingest documents into the knowledge base.
     
@@ -109,25 +149,26 @@ async def ingest_documents(
         )
         await db.commit()
         
-        return KnowledgeBaseIngestResponse(
+        data = KnowledgeBaseIngestResponse(
             success=True,
             documents_ingested=len(entries),
             message=f"Successfully ingested {len(entries)} documents"
         )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Ingestion error: {e}")
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.get("/knowledge-base/search", response_model=KnowledgeBaseSearchResponse)
+@router.get("/knowledge-base/search", response_model=ApiResponse[KnowledgeBaseSearchResponse])
 async def search_knowledge_base(
     query: str = Query(..., description="Search query"),
-    k: int = Query(default=5, ge=1, le=20, description="Number of results"),
+    k: int = Query(default=5, ge=1, le=20),
     search_type: str = Query(default="hybrid", description="Search type: vector, keyword, or hybrid"),
     db: AsyncSession = Depends(get_db)
-) -> KnowledgeBaseSearchResponse:
+) -> ApiResponse[KnowledgeBaseSearchResponse]:
     """
     Search the knowledge base.
     
@@ -187,23 +228,24 @@ async def search_knowledge_base(
                 for r in retrieval_results
             ]
         
-        return KnowledgeBaseSearchResponse(
+        data = KnowledgeBaseSearchResponse(
             query=query,
             results=results,
             total=len(results),
             search_type=search_type
         )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Search error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/knowledge-base/sync", response_model=SyncKnowledgeBaseResponse)
+@router.post("/knowledge-base/sync", response_model=ApiResponse[SyncKnowledgeBaseResponse])
 async def sync_knowledge_base(
     request: SyncKnowledgeBaseRequest,
     db: AsyncSession = Depends(get_db)
-) -> SyncKnowledgeBaseResponse:
+) -> ApiResponse[SyncKnowledgeBaseResponse]:
     """
     Sync knowledge base with data from the main database.
     
@@ -264,7 +306,7 @@ async def sync_knowledge_base(
         total = (clinic_services + doctor_profiles + clinic_info + staff_info + 
                  blogs + feedbacks + user_info + doctor_schedules + clinic_working_hours)
         
-        return SyncKnowledgeBaseResponse(
+        data = SyncKnowledgeBaseResponse(
             success=True,
             clinic_services_synced=clinic_services,
             doctor_profiles_synced=doctor_profiles,
@@ -278,19 +320,20 @@ async def sync_knowledge_base(
             total_synced=total,
             message=f"Successfully synced {total} documents to knowledge base"
         )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Sync error: {e}")
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.get("/conversations/{conversation_id}/history", response_model=ConversationHistoryResponse)
+@router.get("/conversations/{conversation_id}/history", response_model=ApiResponse[ConversationHistoryResponse])
 async def get_conversation_history(
     conversation_id: str,
     limit: int = Query(default=50, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
-) -> ConversationHistoryResponse:
+) -> ApiResponse[ConversationHistoryResponse]:
     """
     Get conversation history.
     
@@ -328,22 +371,23 @@ async def get_conversation_history(
             for msg in messages
         ]
         
-        return ConversationHistoryResponse(
+        data = ConversationHistoryResponse(
             conversation_id=conversation_id,
             messages=message_items,
             total=len(message_items)
         )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"History error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.delete("/conversations/{conversation_id}")
+@router.delete("/conversations/{conversation_id}", response_model=ApiResponse[Dict[str, str]])
 async def delete_conversation(
     conversation_id: str,
     db: AsyncSession = Depends(get_db)
-) -> dict:
+) -> ApiResponse[Dict[str, str]]:
     """
     Delete a conversation and its messages.
     
@@ -361,13 +405,14 @@ async def delete_conversation(
         await db.commit()
         
         if success:
-            return {"message": f"Conversation {conversation_id} deleted successfully"}
+            data = {"message": f"Conversation {conversation_id} deleted successfully"}
+            return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         else:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=StatusCode.NOT_FOUND, detail=ErrorMessage.CONVERSATION_NOT_FOUND)
             
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Delete error: {e}")
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))

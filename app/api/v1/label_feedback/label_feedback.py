@@ -1,6 +1,13 @@
+"""
+Controller/Router for Label Feedback API
+"""
 from fastapi import APIRouter, HTTPException
 import os
 import importlib.util
+from app.common.api_response import ApiResponse
+from app.common.message.status_code import StatusCode
+from app.common.message.success_message import SuccessMessage
+from app.common.message.error_message import ErrorMessage
 
 # Dynamic import for DTO
 dto_path = os.path.join(os.path.dirname(__file__), "../../../dto/label_feedback/label_feedback_dto.py")
@@ -25,24 +32,26 @@ label_feedback_service = label_feedback_service_module.label_feedback_service
 
 router = APIRouter()
 
-@router.post("/label-description", response_model=LabelFeedbackResponse)
+@router.post("/label-description", response_model=ApiResponse[LabelFeedbackResponse])
 async def label_description(request: LabelFeedbackRequest):
     """
     Analyze text feedback and return label predictions.
     """
     try:
         results = label_feedback_service.predict(request.text)
-        return LabelFeedbackResponse(results=results)
+        data = LabelFeedbackResponse(results=results)
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
-@router.post("/label-image", response_model=LabelImageResponse)
+@router.post("/label-image", response_model=ApiResponse[LabelImageResponse])
 async def label_image(request: LabelImageRequest):
     """
     Analyze image and return detailed description.
     """
     try:
         description = label_feedback_service.describe_image(request.image_url)
-        return LabelImageResponse(description=description)
+        data = LabelImageResponse(description=description)
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))

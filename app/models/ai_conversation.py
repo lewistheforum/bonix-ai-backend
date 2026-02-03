@@ -43,6 +43,11 @@ class AIConversation(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     
+    # Table is managed by the primary backend server
+    __table_args__ = {
+        'extend_existing': True
+    }
+    
     # Relationship to messages
     messages = relationship("AIMessage", back_populates="conversation", cascade="all, delete-orphan")
     

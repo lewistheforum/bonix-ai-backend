@@ -61,32 +61,37 @@ def create_application() -> FastAPI:
         tags=["RAG Chatbot"]
     )
     
-    @app.get("/")
+    from app.common.api_response import ApiResponse
+    from typing import Dict, Any
+
+    @app.get("/", response_model=ApiResponse[Dict[str, Any]])
     async def root():
-        return {
+        data = {
             "message": "Welcome to Medicare AI Backend",
             "version": settings.APP_VERSION,
             "docs": "/docs"
         }
+        return ApiResponse(statusCode=200, message="Success", data=data)
     
-    @app.get("/health")
+    @app.get("/health", response_model=ApiResponse[Dict[str, str]])
     async def health_check():
-        return {"status": "healthy"}
+        data = {"status": "healthy"}
+        return ApiResponse(statusCode=200, message="Success", data=data)
 
     @app.on_event("startup")
     async def on_startup():
         """
-        Verify database connectivity and initialize tables when the application starts.
+        Verify database connectivity when the application starts.
+        Note: Tables (ai_conversations, ai_messages, knowledge_base) are created
+        and managed by the primary backend server, not this AI backend.
         """
         # Ensure models are loaded so they are registered in Base.metadata
         from app.models.ai_conversation import AIConversation
         from app.models.ai_message import AIMessage
         from app.models.knowledge_base import KnowledgeBase
-        from app.database import init_db
 
-        # Initialize database tables
-        await init_db()
-        logger.info("Database tables initialized")
+        # Note: We do NOT call init_db() here because the tables are already
+        # created and managed by the primary backend server
 
         is_connected = await check_db_connection()
         if is_connected:
