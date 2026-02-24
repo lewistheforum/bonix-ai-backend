@@ -52,12 +52,12 @@ async def get_clinic_by_id(clinic_id: str):
 
 
 @router.get("/clinics/{clinic_id}/similar", response_model=ApiResponse[RecommendationClinicResponse])
-async def get_similar_clinics(clinic_id: str, limit: Optional[int] = 5):
+async def get_similar_clinics(clinic_id: str):
     """
-    Get similar clinics based on a specific clinic's data for recommendation
+    Get similar clinics based on a specific clinic's data for recommendation.
+    Returns only clinics that are genuinely similar (above a similarity threshold).
     
     - **clinic_id**: The unique identifier of the clinic to find similar clinics for
-    - **limit**: Maximum number of similar clinics to return (default: 5)
     """
     try:
         # First check if the clinic exists
@@ -65,7 +65,7 @@ async def get_similar_clinics(clinic_id: str, limit: Optional[int] = 5):
         if not clinic:
             raise HTTPException(status_code=StatusCode.NOT_FOUND, detail=ErrorMessage.CLINIC_NOT_FOUND)
         
-        result = await recommendation_clinic_service.get_similar_clinics(clinic_id, limit)
+        result = await recommendation_clinic_service.get_similar_clinics(clinic_id)
         return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=result)
     except HTTPException:
         raise

@@ -17,7 +17,12 @@ from app.database import AsyncSessionLocal
 class RecommendationClinicService:
     """Service class for clinic recommendation operations"""
     
-   
+    # Minimum similarity score for a clinic to be considered "similar"
+    MIN_SCORE_THRESHOLD = 0.5
+    # Soft maximum number of results to avoid excessively large responses
+    MAX_RESULTS = 10
+
+
     def _calculate_match_score(self, clinic: dict, request: ClinicRecommendationRequest) -> float:
         """
         Calculate match score between clinic and request criteria
@@ -32,37 +37,37 @@ class RecommendationClinicService:
         """
         score = 0.0
         
+        # Match by specialized_in — strongest similarity signal
+        if request.specialized_in:
+            specialized_score = self._list_overlap_score(
+                clinic.get("specialized_in") or [],
+                request.specialized_in
+            )
+            score += specialized_score * 4.0
+        
+        # Match by paraclinical services
+        if request.paraclinical:
+            paraclinical_score = self._list_overlap_score(
+                clinic.get("paraclinical") or [],
+                request.paraclinical
+            )
+            score += paraclinical_score * 3.0
+        
         # Match by description (text similarity)
         if request.description:
             description_score = self._text_similarity(
                 clinic.get("description", "") or "",
                 request.description
             )
-            score += description_score * 2.0  # Weight: 2x
+            score += description_score * 2.0
         
-        # Match by specialized_in (list overlap)
-        if request.specialized_in:
-            specialized_score = self._list_overlap_score(
-                clinic.get("specialized_in") or [],
-                request.specialized_in
-            )
-            score += specialized_score * 3.0  # Weight: 3x (most important)
-        
-        # Match by pros (list overlap)
+        # Match by pros
         if request.pros:
             pros_score = self._list_overlap_score(
                 clinic.get("pros") or [],
                 request.pros
             )
-            score += pros_score * 1.5  # Weight: 1.5x
-        
-        # Match by paraclinical services (list overlap)
-        if request.paraclinical:
-            paraclinical_score = self._list_overlap_score(
-                clinic.get("paraclinical") or [],
-                request.paraclinical
-            )
-            score += paraclinical_score * 2.5  # Weight: 2.5x
+            score += pros_score * 1.5
         
         return score
     
@@ -105,24 +110,34 @@ class RecommendationClinicService:
         if not list1 or not list2:
             return 0.0
         
-        set1 = set(item.lower() for item in list1)
-        set2 = set(item.lower() for item in list2)
+        set1 = set(item.lower().strip() for item in list1)
+        set2 = set(item.lower().strip() for item in list2)
         
-        # Calculate Jaccard similarity + bonus for matches
+        # Calculate exact matches first
         intersection = set1.intersection(set2)
+        match_score = len(intersection)
         
-        if not intersection:
-            # Check for partial matches (substring matching)
-            partial_matches = 0
-            for item1 in set1:
-                for item2 in set2:
-                    if item1 in item2 or item2 in item1:
-                        partial_matches += 0.5
-                        break
-            return min(partial_matches / len(set2), 1.0) if set2 else 0.0
+        # For items not exactly matched, check partial matches
+        unmatched_target = set2 - intersection
+        unmatched_candidate = set1 - intersection
         
-        # Full match score
-        return len(intersection) / len(set2)
+        for target_item in unmatched_target:
+            best_partial = 0.0
+            target_words = set(target_item.split())
+            for candidate_item in unmatched_candidate:
+                # Substring match (e.g., "x-ray" matches "digital x-ray")
+                if target_item in candidate_item or candidate_item in target_item:
+                    best_partial = max(best_partial, 0.5)
+                    continue
+                # Word-level overlap (e.g., "Bone Surgery" vs "Orthopedic Surgery")
+                candidate_words = set(candidate_item.split())
+                common_words = target_words & candidate_words
+                if common_words and len(common_words) >= 1:
+                    word_overlap = len(common_words) / max(len(target_words), len(candidate_words))
+                    best_partial = max(best_partial, word_overlap * 0.4)
+            match_score += best_partial
+        
+        return min(match_score / len(set2), 1.0) if set2 else 0.0
     
     def _calculate_frequency_bonus(
         self,
@@ -276,16 +291,16 @@ class RecommendationClinicService:
                 "updated_at": row.updated_at
             }
 
-    async def get_similar_clinics(self, clinic_id: str, limit: int = 5) -> RecommendationClinicResponse:
+    async def get_similar_clinics(self, clinic_id: str) -> RecommendationClinicResponse:
         """
-        Get similar clinics based on a specific clinic's data
+        Get similar clinics based on a specific clinic's data.
+        Returns only clinics with a meaningful similarity score (above threshold).
         
         Args:
             clinic_id: The clinic ID to find similar clinics for
-            limit: Maximum number of similar clinics to return (default: 5)
             
         Returns:
-            RecommendationClinicResponse with similar clinics
+            RecommendationClinicResponse with genuinely similar clinics
         """
         # Fetch the target clinic
         target_clinic = await self.get_clinic_by_id(clinic_id)
@@ -298,7 +313,6 @@ class RecommendationClinicService:
 
         # Create a request object from the target clinic's data
         target_request = ClinicRecommendationRequest(
-            # id=target_clinic["id"],
             description=target_clinic.get("description"),
             specialized_in=target_clinic.get("specialized_in"),
             pros=target_clinic.get("pros"),
@@ -314,33 +328,35 @@ class RecommendationClinicService:
                 continue
             
             score = self._calculate_match_score(clinic, target_request)
-            scored_clinics.append((clinic, score))
+            
+            # Only include clinics above the minimum similarity threshold
+            if score >= self.MIN_SCORE_THRESHOLD:
+                scored_clinics.append((clinic, score))
         
-        # Sort by score (descending)
+        # Sort by score (descending) — most similar first
         scored_clinics.sort(key=lambda x: x[1], reverse=True)
+        
+        # Apply soft max to avoid excessively large responses
+        scored_clinics = scored_clinics[:self.MAX_RESULTS]
         
         # Format clinic information
         clinic_infos = []
         for clinic, score in scored_clinics:
-            if score > 0 or len(clinic_infos) < 3:  # Include at least 3 clinics if available
-                clinic_info = ClinicInfo(
-                    id=clinic["id"],
-                    email=clinic["email"],
-                    phone=clinic["phone"],
-                    clinic_name=clinic["clinic_name"],
-                    description=clinic["description"],
-                    specialized_in=clinic["specialized_in"],
-                    pros=clinic["pros"],
-                    paraclinical=clinic["paraclinical"],
-                    dob=clinic["dob"],
-                    profile_picture=clinic["profile_picture"],
-                    created_at=clinic["created_at"],
-                    updated_at=clinic["updated_at"]
-                )
-                clinic_infos.append(clinic_info)
-            
-            if len(clinic_infos) >= limit:
-                break
+            clinic_info = ClinicInfo(
+                id=clinic["id"],
+                email=clinic["email"],
+                phone=clinic["phone"],
+                clinic_name=clinic["clinic_name"],
+                description=clinic["description"],
+                specialized_in=clinic["specialized_in"],
+                pros=clinic["pros"],
+                paraclinical=clinic["paraclinical"],
+                dob=clinic["dob"],
+                profile_picture=clinic["profile_picture"],
+                created_at=clinic["created_at"],
+                updated_at=clinic["updated_at"]
+            )
+            clinic_infos.append(clinic_info)
 
         return RecommendationClinicResponse(recommendations=clinic_infos)
 
