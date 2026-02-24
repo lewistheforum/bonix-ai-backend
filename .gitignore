@@ -40,9 +40,9 @@ coverage.xml
 *.sqlite3
 *.db
 
-# --- Project Specific Structure ---
-# Ignores pycache in all subdirectories of app/
-app/**/__pycache__/
+# --- Project Specific ---
+# Ignore all __pycache__ folders recursively
+**/__pycache__/
 
 # --- Logs ---
 *.log
