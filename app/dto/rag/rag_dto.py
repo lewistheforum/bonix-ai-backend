@@ -8,6 +8,11 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class ChatHistoryItem(BaseModel):
+    """Chat history item for request."""
+    role: str
+    content: str
+
 class RAGChatRequest(BaseModel):
     """Request model for RAG chat endpoint."""
     
@@ -25,13 +30,21 @@ class RAGChatRequest(BaseModel):
         default=None,
         description="User ID for tracking and personalization"
     )
+    history: List[ChatHistoryItem] = Field(
+        default_factory=list,
+        description="Chat history for context"
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "What dental clinics are available near me?",
                 "conversation_id": None,
-                "user_id": "user-123"
+                "user_id": "user-123",
+                "history": [
+                    {"role": "user", "content": "Hello"},
+                    {"role": "assistant", "content": "Hi there! How can I help you?"}
+                ]
             }
         }
 
@@ -198,6 +211,24 @@ class SyncKnowledgeBaseResponse(BaseModel):
     doctor_schedules_synced: int
     clinic_working_hours_synced: int
     total_synced: int
+    message: str
+
+
+class SyncMedicineKnowledgeBaseRequest(BaseModel):
+    """Request model for syncing medicine knowledge base."""
+    
+    clear_existing: bool = Field(
+        default=False,
+        description="Clear existing medicine knowledge base data before sync"
+    )
+
+
+class SyncMedicineKnowledgeBaseResponse(BaseModel):
+    """Response model for medicine knowledge base sync."""
+    
+    success: bool
+    therapeutic_classes_synced: int
+    total_medicines_processed: int
     message: str
 
 

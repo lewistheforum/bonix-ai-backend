@@ -3,10 +3,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.recommendation import recommendation_clinic
-from app.api.v1.chat_bot import chatbot
 from app.api.v1.bad_word import bad_word_detection
 from app.api.v1.label_feedback import label_feedback
-from app.api.rag_router import router as rag_router
+from app.api.v1.fracture_detection import fracture_detection
+from app.api.v1.rag.rag_router import router as rag_router
 from app.config import settings
 from app.database import check_db_connection
 from app.utils.logger import logger
@@ -37,12 +37,6 @@ def create_application() -> FastAPI:
     )
     
     app.include_router(
-        chatbot.router,
-        prefix=f"{settings.API_V1_PREFIX}/chatbot",
-        tags=["Chatbot"]
-    )
-    
-    app.include_router(
         bad_word_detection.router,
         prefix=f"{settings.API_V1_PREFIX}/bad-word-detection",
         tags=["Bad Word Detection"]
@@ -52,6 +46,12 @@ def create_application() -> FastAPI:
         label_feedback.router,
         prefix=f"{settings.API_V1_PREFIX}/feedback",
         tags=["Label Feedback"]
+    )
+    
+    app.include_router(
+        fracture_detection.router,
+        prefix=f"{settings.API_V1_PREFIX}/fracture-detection",
+        tags=["Fracture Detection"]
     )
     
     # RAG Chatbot router
@@ -89,6 +89,7 @@ def create_application() -> FastAPI:
         from app.models.ai_conversation import AIConversation
         from app.models.ai_message import AIMessage
         from app.models.knowledge_base import KnowledgeBase
+        from app.models.knowledge_base_medicines import KnowledgeBaseMedicines
 
         # Note: We do NOT call init_db() here because the tables are already
         # created and managed by the primary backend server

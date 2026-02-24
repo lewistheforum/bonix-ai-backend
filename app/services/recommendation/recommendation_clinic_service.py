@@ -184,17 +184,20 @@ class RecommendationClinicService:
                 accounts._id,
                 accounts.email,
                 accounts.phone,
-                clinic_information.clinic_name,
-                clinic_information.description,
-                clinic_information.specialized_in,
-                clinic_information.pros,
-                clinic_information.paraclinical,
-                clinic_information.dob,
-                clinic_information.profile_picture,
-                clinic_information.created_at,
-                clinic_information.updated_at
-            FROM accounts, clinic_information
-            WHERE accounts._id = clinic_information.clinic_id
+                cai.clinic_name,
+                cai.description,
+                cai.specialized_in,
+                cai.pros,
+                cai.paraclinical,
+                cai.dob,
+                cai.profile_picture,
+                cai.created_at,
+                cai.updated_at
+            FROM accounts
+            join clinic_admin_information cai 
+            on accounts._id = cai.account_id
+            join clinic_subcriptions cs on cs.clinic_id = accounts._id
+            where cs.subscription_status = 'ACTIVE'
         """)
         
         async with AsyncSessionLocal() as session:
@@ -236,17 +239,17 @@ class RecommendationClinicService:
                 accounts._id,
                 accounts.email,
                 accounts.phone,
-                clinic_information.clinic_name,
-                clinic_information.description,
-                clinic_information.specialized_in,
-                clinic_information.pros,
-                clinic_information.paraclinical,
-                clinic_information.dob,
-                clinic_information.profile_picture,
-                clinic_information.created_at,
-                clinic_information.updated_at
-            FROM accounts, clinic_information
-            WHERE accounts._id = clinic_information.clinic_id AND accounts._id = :clinic_id
+                cai.clinic_name,
+                cai.description,
+                cai.specialized_in,
+                cai.pros,
+                cai.paraclinical,
+                cai.dob,
+                cai.profile_picture,
+                cai.created_at,
+                cai.updated_at
+            FROM accounts, clinic_admin_information cai 
+            WHERE accounts._id = cai.account_id  AND accounts._id = :clinic_id
         """)
 
 

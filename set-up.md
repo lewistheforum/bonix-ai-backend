@@ -1,3 +1,5 @@
+Windows:
+
 Step 1: Create virtual environment
 python -m venv .venv (run when folder does not exist .venv)
 Step 2: Activate virtual environment
@@ -6,3 +8,14 @@ Step 3: Install dependencies
 pip install -r requirements.txt
 Step 4: Run the server
 python main.py
+
+MacOS:
+
+Step 1: Create virtual environment
+python3 -m venv .venv (run when folder does not exist .venv)
+Step 2: Activate virtual environment
+source .venv/bin/activate (run when folder .venv exists)
+Step 3: Install dependencies
+pip install -r requirements.txt
+Step 4: Run the server
+python3 main.py

@@ -9,7 +9,7 @@ def test_chat():
     
     # Simple query to trigger context retrieval
     data = {
-        "message": "give me 5 clinics",
+        "message": "what can you support?",
         "conversation_id": None
     }
     
@@ -21,6 +21,9 @@ def test_chat():
             print("\nShared Success! Response received.")
             print("-" * 30)
             print(json.dumps(response.json(), indent=2, ensure_ascii=False))
+            print("-" * 30)
+            print("RESPONSE TEXT:")
+            print(response.json()['data']['response'])
             print("-" * 30)
             print("\n>>> NOW CHECK YOUR 'python3 main.py' TERMINAL <<<")
             print("You should see the 'Retrieved context...' log message there.")

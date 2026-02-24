@@ -26,9 +26,9 @@ from app.utils.logger import logger
 
 
 # System prompt for the RAG chatbot
-SYSTEM_PROMPT = f"""You are a helpful medical assistant chatbot for the Bonix clinic platform.
+SYSTEM_PROMPT = """You are a helpful medical assistant chatbot for the Bonix clinic platform.
 
-Your specific knowledge base consists *strict* of the following ingested data types:
+Your specific knowledge base consists strictly of the following ingested data types:
 - Clinic Services (details, prices, clinics)
 - Doctor Profiles (background, specialties, clinics)
 - Clinic Information (branches, addresses, contacts)
@@ -67,10 +67,10 @@ Schedule Lookup Instructions:
 - If any of these are missing, ask the user specifically for the missing item before calling the tool.
 
 System Database Schema:
-{SCHEMA_DESCRIPTION}
+{schema}
 
 Context from knowledge base:
-{{context}}
+{context}
 .
 """
 
@@ -142,12 +142,17 @@ class RAGChatbot:
     def _create_agent(self) -> AgentExecutor:
         """Create the LangChain agent with tools."""
         # Define the prompt template
+        from langchain_core.prompts import SystemMessagePromptTemplate
+        
         prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT),
+            SystemMessagePromptTemplate.from_template(SYSTEM_PROMPT),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
+        
+        # Inject schema description safely
+        prompt = prompt.partial(schema=SCHEMA_DESCRIPTION)
         
         # Create the agent with tools
         tools = [booking_tool, clinic_schedule_tool, doctor_schedule_tool]
@@ -440,7 +445,7 @@ class RAGChatbot:
         """
         try:
             messages = [
-                SystemMessage(content=SYSTEM_PROMPT.format(context=context)),
+                SystemMessage(content=SYSTEM_PROMPT.format(context=context, schema=SCHEMA_DESCRIPTION)),
                 *chat_history,
                 HumanMessage(content=query)
             ]

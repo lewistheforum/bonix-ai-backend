@@ -23,6 +23,8 @@ from app.dto.rag import (
     KnowledgeBaseSearchResult,
     SyncKnowledgeBaseRequest,
     SyncKnowledgeBaseResponse,
+    SyncMedicineKnowledgeBaseRequest,
+    SyncMedicineKnowledgeBaseResponse,
     ConversationHistoryRequest,
     ConversationHistoryResponse,
     MessageItem,
@@ -32,6 +34,7 @@ from app.services.rag.hybrid_retriever import hybrid_retriever
 from app.services.rag.vector_store_service import vector_store_service
 from app.services.rag.keyword_search_service import keyword_search_service
 from app.services.rag.knowledge_base_service import knowledge_base_service
+from app.services.rag.medicine_knowledge_base_service import medicine_knowledge_base_service
 from app.services.rag.conversation_memory_service import conversation_memory_service
 from app.utils.logger import logger
 from app.common.api_response import ApiResponse
@@ -58,64 +61,19 @@ async def chat_rag(
         Chat response with answer and source documents
     """
     try:
-        # Create conversation history structure
-        history = [
-            (msg.role, msg.content) 
-            for msg in request.history
-        ]
+        result = await rag_chatbot.chat(
+            db=db,
+            query=request.message,
+            conversation_id=request.conversation_id,
+            user_id=request.user_id
+        )
         
-        # Placeholder for rag_pipeline if not defined in the original context
-        # We assume rag_chatbot or similar is available.
-        class DummyRagPipeline:
-            async def ainvoke(self, input_data):
-                query = input_data["question"]
-                conversation_id = None 
-                user_id = None 
-                
-                result = await rag_chatbot.chat(
-                    db=db,
-                    query=query,
-                    conversation_id=conversation_id,
-                    user_id=user_id
-                )
-                
-                return {
-                    "answer": result["response"],
-                    "source_documents": [
-                        type('Document', (object,), {'page_content': s.content, 'metadata': {'id': s.id, 'source': s.source, 'score': s.score}})()
-                        for s in result.get("sources", [])
-                    ]
-                }
-        
-        try:
-            rag_pipeline # Check if it's defined
-        except NameError:
-            rag_pipeline = DummyRagPipeline()
-
-        result = await rag_pipeline.ainvoke({
-            "question": request.query,
-            "chat_history": history,
-            "callbacks": None  # Can add callbacks for streaming/logging
-        })
-        
-        # Extract source documents
-        source_documents = []
-        if "source_documents" in result:
-            source_documents = [
-                KnowledgeBaseSearchResult(
-                    id=str(doc.metadata.get("id", "")),
-                    content=doc.page_content[:200],
-                    score=doc.metadata.get("score", 0.0),
-                    source=doc.metadata.get("source", "unknown"),
-                    metadata=doc.metadata
-                )
-                for doc in result["source_documents"]
-            ]
-            
         data = RAGChatResponse(
-            answer=result["answer"],
-            source_documents=source_documents,
-            generated_at=datetime.utcnow()
+            response=result["response"],
+            conversation_id=result["conversation_id"],
+            context_used=result["context_used"],
+            sources=result["sources"],
+            timestamp=datetime.utcnow()
         )
         return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
@@ -324,6 +282,49 @@ async def sync_knowledge_base(
         
     except Exception as e:
         logger.error(f"Sync error: {e}")
+        await db.rollback()
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
+
+
+@router.post("/knowledge-base/sync-medicines", response_model=ApiResponse[SyncMedicineKnowledgeBaseResponse])
+async def sync_medicine_knowledge_base(
+    request: SyncMedicineKnowledgeBaseRequest,
+    db: AsyncSession = Depends(get_db)
+) -> ApiResponse[SyncMedicineKnowledgeBaseResponse]:
+    """
+    Sync medicine knowledge base from the medicines table.
+    
+    Groups medicines by therapeutic_class, generates embeddings for each
+    group, and stores them in the knowledge_base_medicines table.
+    
+    Args:
+        request: Sync options (clear_existing)
+        db: Database session
+        
+    Returns:
+        Sync results with counts
+    """
+    try:
+        result = await medicine_knowledge_base_service.sync_medicines(
+            db=db,
+            clear_existing=request.clear_existing
+        )
+        
+        await db.commit()
+        
+        data = SyncMedicineKnowledgeBaseResponse(
+            success=True,
+            therapeutic_classes_synced=result["therapeutic_classes_synced"],
+            total_medicines_processed=result["total_medicines_processed"],
+            message=(
+                f"Successfully synced {result['therapeutic_classes_synced']} therapeutic classes "
+                f"({result['total_medicines_processed']} medicines) to knowledge base"
+            )
+        )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        
+    except Exception as e:
+        logger.error(f"Medicine sync error: {e}")
         await db.rollback()
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
