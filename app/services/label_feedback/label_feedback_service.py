@@ -53,15 +53,30 @@ class LabelFeedbackService:
             # Use a local directory to avoid symlink issues with Java/VnCoreNLP
             # and use system cache to avoid cluttering project directory
             from pathlib import Path
-            local_model_dir = Path.home() / ".cache" / "medicare-ai" / "vncorenlp"
+            from huggingface_hub import hf_hub_download
+            import zipfile
             
-            # Download/Get cache path for the VnCoreNLP model
-            # Using local_dir to force actual files instead of symlinks
-            model_dir = snapshot_download(repo_id=self.VNCORENLP_REPO, local_dir=local_model_dir, token=self.token)
+            local_model_dir = Path.home() / ".cache" / "bonix-ai" / "vncorenlp"
+            local_model_dir.mkdir(parents=True, exist_ok=True)
             
-            # VnCoreNLP expects the directory to contain VnCoreNLP-1.2.jar and models
-            # We assume the repo structure matches what py_vncorenlp expects or contains the jar
-            return py_vncorenlp.VnCoreNLP(save_dir=model_dir, annotators=["wseg"])
+            # Check if jar file exists
+            jar_files = list(local_model_dir.rglob("VnCoreNLP-*.jar"))
+            if not jar_files:
+                print("VnCoreNLP not found locally. Downloading from Hugging Face...")
+                zip_path = hf_hub_download(repo_id=self.VNCORENLP_REPO, filename="VnCoreNLP.zip", token=self.token)
+                
+                print(f"Extracting {zip_path} to {local_model_dir}...")
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(local_model_dir)
+                    
+                jar_files = list(local_model_dir.rglob("VnCoreNLP-*.jar"))
+                
+            if not jar_files:
+                raise Exception("VnCoreNLP jar file not found after extraction")
+                
+            save_dir = str(jar_files[0].parent)
+            
+            return py_vncorenlp.VnCoreNLP(save_dir=save_dir, annotators=["wseg"])
         except Exception as e:
             print(f"Error setting up VnCoreNLP: {e}")
             return None

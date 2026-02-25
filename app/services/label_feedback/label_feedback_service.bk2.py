@@ -10,24 +10,30 @@ import py_vncorenlp
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoProcessor, AutoModelForCausalLM
 from PIL import Image
 import requests
+from huggingface_hub import snapshot_download
+from app.config import settings
 
 class LabelFeedbackService:
-    def __init__(self):
+    def __init__(self, token=None):
         # Determine base directory of this service file
         base_dir = os.path.dirname(os.path.abspath(__file__))
         
+        # Token handling
+        self.token = token if token else settings.HF_TOKEN
+        
         # Label description model config
-        self.MODEL_PATH = os.path.join(base_dir, "model_description")
-        self.VNCORENLP_ZIP = "VnCoreNLP.zip"
-        self.VNCORENLP_SAVE_DIR = os.path.join(base_dir, "vncorenlp")
+        # self.MODEL_PATH = "lewisnguyn/bonix-feedback-model-description"
+        self.MODEL_PATH = "lewisnguyn/bonix-feedback-model-description-v2"
+        self.VNCORENLP_REPO = "lewisnguyn/bonix-model-vncorenlp"
         self.MAX_LENGTH = 256
         
         self.tokenizer = None
         self.model = None
         self.rdrsegmenter = None
         
+        
         # Label image model config
-        self.IMAGE_MODEL_PATH = os.path.join(base_dir, "model_image")
+        self.IMAGE_MODEL_PATH = "lewisnguyn/bonix-feedback-model-image"
         self.image_model = None
         self.image_processor = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -41,27 +47,30 @@ class LabelFeedbackService:
 
     # PREDICT DESCRIPTION LABEL SERVICE
     def _setup_vncorenlp(self):
-        """Ensure VnCoreNLP is extracted and available."""
-        # Check for the key jar file
-        jar_path = os.path.join(self.VNCORENLP_SAVE_DIR, "VnCoreNLP-1.2.jar")
-        if not os.path.exists(jar_path):
-            print("VnCoreNLP jar not found.")
-            if os.path.exists(self.VNCORENLP_ZIP):
-                print(f"Extracting {self.VNCORENLP_ZIP}...")
-                 # Extract into current directory causing VnCoreNLP folder to appear/populate
-                with zipfile.ZipFile(self.VNCORENLP_ZIP, 'r') as z:
-                    z.extractall(".")
-                print("Extraction complete.")
-            else:
-                print(f"Error: {self.VNCORENLP_ZIP} not found. Please ensure VnCoreNLP is available or download it.")
-                return None
-        
-        return py_vncorenlp.VnCoreNLP(save_dir=self.VNCORENLP_SAVE_DIR, annotators=["wseg"])
+        """Ensure VnCoreNLP is available from Hugging Face."""
+        try:
+            print(f"Downloading/Loading VnCoreNLP from {self.VNCORENLP_REPO}...")
+            
+            # Use a local directory to avoid symlink issues with Java/VnCoreNLP
+            # and use system cache to avoid cluttering project directory
+            from pathlib import Path
+            local_model_dir = Path.home() / ".cache" / "bonix-ai" / "vncorenlp"
+            
+            # Download/Get cache path for the VnCoreNLP model
+            # Using local_dir to force actual files instead of symlinks
+            model_dir = snapshot_download(repo_id=self.VNCORENLP_REPO, local_dir=local_model_dir, token=self.token)
+            
+            # VnCoreNLP expects the directory to contain VnCoreNLP-1.2.jar and models
+            # We assume the repo structure matches what py_vncorenlp expects or contains the jar
+            return py_vncorenlp.VnCoreNLP(save_dir=model_dir, annotators=["wseg"])
+        except Exception as e:
+            print(f"Error setting up VnCoreNLP: {e}")
+            return None
 
     def _load_resources(self):
         print(f"Loading model from {self.MODEL_PATH}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_PATH)
-        self.model = AutoModelForSequenceClassification.from_pretrained(self.MODEL_PATH)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_PATH, token=self.token)
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.MODEL_PATH, token=self.token)
         self.model.eval() # Set to eval mode
         
         print("Initializing VnCoreNLP...")
@@ -108,7 +117,7 @@ class LabelFeedbackService:
         # Collect all predictions > 10%
         predictions = []
         for idx, prob in enumerate(probs):
-            if prob > 0.1:
+            if prob > 0.25:
                 label_name = id2label[str(idx)] if str(idx) in id2label else id2label[idx]
                 predictions.append({"label": label_name, "score": float(prob)})
         
@@ -133,8 +142,22 @@ class LabelFeedbackService:
     # PREDICT IMAGE LABEL SERVICE
     def _load_image_resources(self):
         print(f"Loading image model from {self.IMAGE_MODEL_PATH}...")
-        self.image_model = AutoModelForCausalLM.from_pretrained(self.IMAGE_MODEL_PATH, trust_remote_code=True).to(self.device).eval()
-        self.image_processor = AutoProcessor.from_pretrained(self.IMAGE_MODEL_PATH, trust_remote_code=True)
+        self.image_model = AutoModelForCausalLM.from_pretrained(self.IMAGE_MODEL_PATH, trust_remote_code=True, token=self.token).to(self.device).eval()
+        self.image_processor = AutoProcessor.from_pretrained(self.IMAGE_MODEL_PATH, trust_remote_code=True, token=self.token)
+    
+    def check_model_status(self) -> dict:
+        """Check status of all models"""
+        status = {
+            "description_model": self.model is not None and self.tokenizer is not None,
+            "vncorenlp": self.rdrsegmenter is not None,
+            "image_model": False # Lazy loaded usually, but let's check if loaded or try to load?
+        }
+        
+        # Check image model if it was attempted to load
+        if self.image_model is not None and self.image_processor is not None:
+            status["image_model"] = True
+            
+        return status
 
     def describe_image(self, img_path):
         if not self.image_model or not self.image_processor:
