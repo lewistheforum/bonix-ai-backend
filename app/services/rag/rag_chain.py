@@ -71,6 +71,8 @@ System Database Schema:
 
 Context from knowledge base:
 {context}
+
+NOTE: Response answer only html tags format.
 .
 """
 

@@ -27,46 +27,40 @@ except ImportError as e:
 class FractureDetectionService:
     def __init__(self):
         self.model = None
-        self.model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models", "huggingface", "wrist_fracture_model.pt")
         self.repo_id = "lewisnguyn/wrist-fracture-detection"
         self.filename = "fracture_model.pt"
+        self.model_path = None
         self.is_loaded = False
         
-        # Determine model path
-        models_dir = os.path.dirname(self.model_path)
-        os.makedirs(models_dir, exist_ok=True)
-        
     def _download_model_if_needed(self):
-        """Download the model from Hugging Face if it doesn't exist locally"""
-        if os.path.exists(self.model_path):
+        """Get the model from Hugging Face hub (uses cache automatically)"""
+        if self.model_path and os.path.exists(self.model_path):
             return True
             
-        logger.info(f"Downloading model {self.repo_id}/{self.filename}...")
+        logger.info(f"Fetching model {self.repo_id}/{self.filename} from Hugging Face...")
         try:
             from huggingface_hub import hf_hub_download
-            downloaded_path = hf_hub_download(
+            self.model_path = hf_hub_download(
                 repo_id=self.repo_id,
                 filename=self.filename,
-                local_dir=os.path.dirname(self.model_path),
-                local_dir_use_symlinks=False
             )
-            # Rename if the downloaded file has a different name
-            if downloaded_path != self.model_path:
-                os.rename(downloaded_path, self.model_path)
-            logger.info(f"Model downloaded successfully to {self.model_path}")
+            logger.info(f"Model available at {self.model_path}")
             return True
         except Exception as e:
-            logger.error(f"Error downloading model via huggingface_hub: {e}")
+            logger.error(f"Error fetching model via huggingface_hub: {e}")
             
-            # Fallback to direct download
+            # Fallback to direct download to a temporary file
             try:
+                import tempfile
                 url = f"https://huggingface.co/{self.repo_id}/resolve/main/{self.filename}"
                 logger.info(f"Fallback direct download from {url}...")
                 response = requests.get(url, stream=True)
                 response.raise_for_status()
-                with open(self.model_path, 'wb') as f:
+                fd, temp_path = tempfile.mkstemp(suffix=".pt")
+                with os.fdopen(fd, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
+                self.model_path = temp_path
                 logger.info(f"Fallback download successful to {self.model_path}")
                 return True
             except Exception as inner_e:

@@ -263,3 +263,63 @@ class ConversationHistoryResponse(BaseModel):
     conversation_id: str
     messages: List[MessageItem]
     total: int
+
+
+class ConversationChatRequest(BaseModel):
+    """Request model for conversation chat endpoint.
+    
+    The conversationId and userId are provided via URL path parameters.
+    """
+    
+    message: str = Field(
+        ...,
+        description="User's chat message",
+        min_length=1,
+        max_length=4000
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "What dental services do you offer?"
+            }
+        }
+
+
+class ConversationChatResponse(BaseModel):
+    """Response model for conversation chat endpoint."""
+    
+    response: str = Field(
+        description="AI-generated response"
+    )
+    conversation_id: str = Field(
+        description="Conversation ID (new or existing)"
+    )
+    context_used: bool = Field(
+        default=False,
+        description="Whether knowledge base context was used"
+    )
+    conversation_context_used: bool = Field(
+        default=False,
+        description="Whether past conversation messages were used as context"
+    )
+    sources: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Source documents used for the response"
+    )
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Response timestamp"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "response": "We offer several dental services including...",
+                "conversation_id": "conv-uuid-123",
+                "context_used": True,
+                "conversation_context_used": True,
+                "sources": [],
+                "timestamp": "2024-01-19T12:00:00Z"
+            }
+        }

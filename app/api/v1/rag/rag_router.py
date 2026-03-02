@@ -28,6 +28,8 @@ from app.dto.rag import (
     ConversationHistoryRequest,
     ConversationHistoryResponse,
     MessageItem,
+    ConversationChatRequest,
+    ConversationChatResponse,
 )
 from app.services.rag.rag_chain import rag_chatbot
 from app.services.rag.hybrid_retriever import hybrid_retriever
@@ -36,6 +38,7 @@ from app.services.rag.keyword_search_service import keyword_search_service
 from app.services.rag.knowledge_base_service import knowledge_base_service
 from app.services.rag.medicine_knowledge_base_service import medicine_knowledge_base_service
 from app.services.rag.conversation_memory_service import conversation_memory_service
+from app.services.rag.conversation_chat_service import conversation_chat_service
 from app.utils.logger import logger
 from app.common.api_response import ApiResponse
 from app.common.message.status_code import StatusCode
@@ -79,6 +82,56 @@ async def chat_rag(
         
     except Exception as e:
         logger.error(f"RAG Chat error: {e}")
+        raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
+
+
+@router.post("/conversation/{conversation_id}/{user_id}", response_model=ApiResponse[ConversationChatResponse])
+async def conversation_chat(
+    conversation_id: str,
+    user_id: str,
+    request: ConversationChatRequest,
+    db: AsyncSession = Depends(get_db)
+) -> ApiResponse[ConversationChatResponse]:
+    """
+    Chat within a specific conversation with conversation-scoped RAG.
+    
+    This endpoint combines:
+    - Semantic search over past conversation messages (embedded on save)
+    - Knowledge base hybrid retrieval (clinic, doctor, service data)
+    - Windowed chat history for recent context
+    
+    Each user message and assistant response is automatically embedded,
+    making previous discussion topics searchable in future turns.
+    
+    Args:
+        conversation_id: UUID of the conversation
+        user_id: UUID of the user
+        request: Chat request containing the message
+        db: Database session
+        
+    Returns:
+        Chat response with answer and context metadata
+    """
+    try:
+        result = await conversation_chat_service.chat(
+            db=db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            message=request.message
+        )
+        
+        data = ConversationChatResponse(
+            response=result["response"],
+            conversation_id=result["conversation_id"],
+            context_used=result["context_used"],
+            conversation_context_used=result["conversation_context_used"],
+            sources=result["sources"],
+            timestamp=result["timestamp"]
+        )
+        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        
+    except Exception as e:
+        logger.error(f"Conversation chat error: {e}")
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 

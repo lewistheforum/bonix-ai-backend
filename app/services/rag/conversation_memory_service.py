@@ -247,6 +247,127 @@ class ConversationMemoryService:
             logger.error(f"Error clearing conversation: {e}")
             return False
 
+    async def save_message_with_embedding(
+        self,
+        db: AsyncSession,
+        conversation_id: str,
+        role: str,
+        content: str,
+        sender_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> AIMessageModel:
+        """
+        Save a message and generate its vector embedding.
+        
+        The embedding is stored in the ai_messages.embedding column so that
+        future queries can perform cosine-similarity search within the
+        conversation to find semantically relevant past messages.
+        
+        Args:
+            db: Database session
+            conversation_id: Conversation ID
+            role: Message role ('user', 'assistant', 'system')
+            content: Message content
+            sender_id: Optional sender ID
+            metadata: Optional message metadata
+            
+        Returns:
+            Created AIMessage instance (with embedding populated)
+        """
+        from app.services.rag.embeddings_service import embeddings_service
+        
+        # Save the message first
+        message = await self.save_message(
+            db, conversation_id, role, content, sender_id, metadata
+        )
+        
+        # Generate and store the embedding inside a savepoint
+        # so that if embedding fails, it doesn't abort the outer transaction
+        try:
+            async with db.begin_nested():
+                embedding = await embeddings_service.embed_text(content)
+                message.embedding = embedding
+                await db.flush()
+            logger.info(f"Embedded {role} message {message._id} in conversation {conversation_id}")
+        except Exception as e:
+            logger.warning(f"Failed to embed message {message._id}: {e}. Message saved without embedding.")
+        
+        return message
+
+    async def search_conversation_by_similarity(
+        self,
+        db: AsyncSession,
+        conversation_id: str,
+        query: str,
+        k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search past messages in a conversation by semantic similarity.
+        
+        Uses pgvector cosine distance (<=>) on the ai_messages.embedding
+        column, scoped to the given conversation_id.
+        Uses a savepoint so that pgvector errors don't abort the outer transaction.
+        
+        Args:
+            db: Database session
+            conversation_id: Conversation ID to search within
+            query: Query text to find similar messages
+            k: Number of similar messages to return
+            
+        Returns:
+            List of dicts with keys: role, content, score, created_at
+        """
+        from app.services.rag.embeddings_service import embeddings_service
+        from sqlalchemy import text
+        
+        try:
+            # Generate embedding for the query
+            query_embedding = await embeddings_service.embed_text(query)
+            
+            conv_uuid = uuid.UUID(conversation_id)
+            
+            # Wrap in a savepoint so that if the pgvector query fails
+            # (e.g. no embeddings exist yet), it doesn't poison the transaction
+            async with db.begin_nested():
+                # Use raw SQL for pgvector cosine distance operator
+                sql = text("""
+                    SELECT _id, role, content, created_at,
+                           1 - (embedding <=> :query_vec::vector) AS similarity
+                    FROM ai_messages
+                    WHERE conversation_id = :conv_id
+                      AND deleted_at IS NULL
+                      AND embedding IS NOT NULL
+                    ORDER BY embedding <=> :query_vec::vector
+                    LIMIT :k
+                """)
+                
+                result = await db.execute(sql, {
+                    "query_vec": str(query_embedding),
+                    "conv_id": str(conv_uuid),
+                    "k": k
+                })
+                rows = result.fetchall()
+            
+            similar_messages = []
+            for row in rows:
+                similar_messages.append({
+                    "id": str(row._mapping["_id"]),
+                    "role": row._mapping["role"],
+                    "content": row._mapping["content"],
+                    "score": float(row._mapping["similarity"]),
+                    "created_at": row._mapping["created_at"],
+                })
+            
+            logger.info(
+                f"Found {len(similar_messages)} similar messages in "
+                f"conversation {conversation_id} for query '{query[:50]}...'"
+            )
+            return similar_messages
+            
+        except Exception as e:
+            logger.error(f"Error searching conversation by similarity: {e}")
+            return []
+
 
 # Singleton instance
 conversation_memory_service = ConversationMemoryService()

@@ -16,6 +16,8 @@ from app.dto.rag.rag_dto import (
     ConversationHistoryRequest,
     ConversationHistoryResponse,
     MessageItem,
+    ConversationChatRequest,
+    ConversationChatResponse,
 )
 
 __all__ = [
@@ -33,4 +35,7 @@ __all__ = [
     "ConversationHistoryRequest",
     "ConversationHistoryResponse",
     "MessageItem",
+    "ConversationChatRequest",
+    "ConversationChatResponse",
 ]
+
