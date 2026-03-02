@@ -187,6 +187,52 @@ class RecommendationClinicService:
         
         return bonus
 
+    async def get_clinic_managers_by_admin_ids(self, admin_ids: List[str]) -> List[dict]:
+        """
+        Fetch clinic managers for specific clinic admins from database
+        """
+        if not admin_ids:
+            return []
+            
+        query = text("""
+            SELECT 
+                accounts._id,
+                accounts.email,
+                accounts.phone,
+                cmi.clinic_branch_name as clinic_name,
+                cmi.dob,
+                cmi.profile_picture,
+                cmi.created_at,
+                cmi.updated_at
+            FROM accounts
+            JOIN clinic_manager_information cmi ON accounts._id = cmi.account_id
+            WHERE accounts.parent_id = ANY(:admin_ids) AND accounts.role = 'CLINIC_MANAGER'
+        """)
+        
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(query, {"admin_ids": admin_ids})
+            rows = result.fetchall()
+            
+            managers = []
+            for row in rows:
+                manager = {
+                    "id": str(row._id) if row._id else None,
+                    "email": row.email,
+                    "phone": row.phone,
+                    "clinic_name": row.clinic_name,
+                    "description": None,
+                    "specialized_in": [],
+                    "pros": [],
+                    "paraclinical": [],
+                    "dob": row.dob,
+                    "profile_picture": row.profile_picture,
+                    "created_at": row.created_at,
+                    "updated_at": row.updated_at
+                }
+                managers.append(manager)
+            
+            return managers
+
     async def get_all_clinics(self) -> List[dict]:
         """
         Fetch all clinics from database
@@ -306,7 +352,7 @@ class RecommendationClinicService:
         target_clinic = await self.get_clinic_by_id(clinic_id)
 
         if not target_clinic:
-            return RecommendationClinicResponse(recommendations=[])
+            return RecommendationClinicResponse(recommendationsClinicAdmins=[], recommendationsClinicManagers=[])
         
         # Fetch all clinics
         all_clinics = await self.get_all_clinics()
@@ -340,7 +386,8 @@ class RecommendationClinicService:
         scored_clinics = scored_clinics[:self.MAX_RESULTS]
         
         # Format clinic information
-        clinic_infos = []
+        admin_infos = []
+        admin_ids = []
         for clinic, score in scored_clinics:
             clinic_info = ClinicInfo(
                 id=clinic["id"],
@@ -356,9 +403,34 @@ class RecommendationClinicService:
                 created_at=clinic["created_at"],
                 updated_at=clinic["updated_at"]
             )
-            clinic_infos.append(clinic_info)
+            admin_infos.append(clinic_info)
+            if clinic["id"]:
+                admin_ids.append(clinic["id"])
 
-        return RecommendationClinicResponse(recommendations=clinic_infos)
+        manager_infos = []
+        if admin_ids:
+            managers = await self.get_clinic_managers_by_admin_ids(admin_ids)
+            for m in managers:
+                manager_info = ClinicInfo(
+                    id=m["id"],
+                    email=m["email"],
+                    phone=m["phone"],
+                    clinic_name=m["clinic_name"],
+                    description=m["description"],
+                    specialized_in=m["specialized_in"],
+                    pros=m["pros"],
+                    paraclinical=m["paraclinical"],
+                    dob=m["dob"],
+                    profile_picture=m["profile_picture"],
+                    created_at=m["created_at"],
+                    updated_at=m["updated_at"]
+                )
+                manager_infos.append(manager_info)
+
+        return RecommendationClinicResponse(
+            recommendationsClinicAdmins=admin_infos,
+            recommendationsClinicManagers=manager_infos
+        )
 
     async def get_recommendations_from_patient_appointments(
         self, 
@@ -385,7 +457,7 @@ class RecommendationClinicService:
                 input_clinics.append(clinic)
         
         if not input_clinics:
-            return RecommendationClinicResponse(recommendations=[])
+            return RecommendationClinicResponse(recommendationsClinicAdmins=[], recommendationsClinicManagers=[])
         
         # Aggregate characteristics from all input clinics
         aggregated_specialized_in = []
@@ -444,9 +516,10 @@ class RecommendationClinicService:
         scored_clinics.sort(key=lambda x: x[1], reverse=True)
         
         # Format clinic information
-        clinic_infos = []
+        admin_infos = []
+        admin_ids = []
         for clinic, score in scored_clinics:
-            if score > 0 or len(clinic_infos) < 3:  # Include at least 3 clinics if available
+            if score > 0 or len(admin_infos) < 3:  # Include at least 3 clinics if available
                 clinic_info = ClinicInfo(
                     id=clinic["id"],
                     email=clinic["email"],
@@ -461,12 +534,37 @@ class RecommendationClinicService:
                     created_at=clinic["created_at"],
                     updated_at=clinic["updated_at"]
                 )
-                clinic_infos.append(clinic_info)
+                admin_infos.append(clinic_info)
+                if clinic["id"]:
+                    admin_ids.append(clinic["id"])
             
-            if len(clinic_infos) >= limit:
+            if len(admin_infos) >= limit:
                 break
 
-        return RecommendationClinicResponse(recommendations=clinic_infos)
+        manager_infos = []
+        if admin_ids:
+            managers = await self.get_clinic_managers_by_admin_ids(admin_ids)
+            for m in managers:
+                manager_info = ClinicInfo(
+                    id=m["id"],
+                    email=m["email"],
+                    phone=m["phone"],
+                    clinic_name=m["clinic_name"],
+                    description=m["description"],
+                    specialized_in=m["specialized_in"],
+                    pros=m["pros"],
+                    paraclinical=m["paraclinical"],
+                    dob=m["dob"],
+                    profile_picture=m["profile_picture"],
+                    created_at=m["created_at"],
+                    updated_at=m["updated_at"]
+                )
+                manager_infos.append(manager_info)
+
+        return RecommendationClinicResponse(
+            recommendationsClinicAdmins=admin_infos,
+            recommendationsClinicManagers=manager_infos
+        )
 
     
 

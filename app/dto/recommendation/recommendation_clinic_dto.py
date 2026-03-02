@@ -68,12 +68,13 @@ class ClinicInfo(BaseModel):
 
 class RecommendationClinicResponse(BaseModel):
     """Response DTO for clinic recommendation"""
-    recommendations: List[ClinicInfo] = Field(..., description="List of recommended clinics")
+    recommendationsClinicAdmins: List[ClinicInfo] = Field(..., description="List of recommended clinics")
+    recommendationsClinicManagers: List[ClinicInfo] = Field(..., description="List of recommended clinics")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "recommendations": [
+                "recommendationsClinicAdmins": [
                     {
                         "id": "CLI001",
                         "email": "citymedicalcenter@example.com",
@@ -89,6 +90,22 @@ class RecommendationClinicResponse(BaseModel):
                         "updated_at": "2024-01-01T00:00:00"
                     }
                 ],
+                "recommendationsClinicManagers": [
+                    {
+                        "id": "CLI001",
+                        "email": "citymedicalcenter@example.com",
+                        "phone": "+84123456789",
+                        "clinic_name": "City Medical Center",
+                        "description": "Clinic description",
+                        "specialized_in": ["Specialization 1", "Specialization 2"],
+                        "pros": ["Pros 1", "Pros 2"],
+                        "paraclinical": ["Paraclinical 1", "Paraclinical 2"],
+                        "dob": "2024-01-01T00:00:00",
+                        "profile_picture": "https://example.com/profile.jpg",
+                        "created_at": "2024-01-01T00:00:00",
+                        "updated_at": "2024-01-01T00:00:00"
+                    }
+                ]
             }
         }
 
