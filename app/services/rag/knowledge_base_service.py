@@ -624,7 +624,7 @@ Content: {blog.content or 'No content'}
                         "blog_id": str(blog._id),
                         "clinic_id": str(blog.clinic_id) if blog.clinic_id else None,
                         "title": blog.title,
-                        "type": blog.type
+                        "blog_type": blog.type
                     }
                 })
             

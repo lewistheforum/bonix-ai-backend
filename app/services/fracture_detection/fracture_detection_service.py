@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-from app.dto.fracture_detection.fracture_detection_dto import BoundingBox, FractureDetectionResponse, AIResultAnalyze
+from app.dto.fracture_detection.fracture_detection_dto import BoundingBox, FractureDetectionData, AIResultAnalyze
 from app.utils.logger import logger
 
 # Try to import ultralytics and patch it with custom modules before loading YOLO
@@ -131,17 +131,13 @@ class FractureDetectionService:
             base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
             
             classification_prompt = (
-                "You are a medical imaging assistant. "
-                "Look at the attached image carefully. "
-                "Is this image an X-ray of a wrist, hand, or forearm area? "
-                "Medical X-rays may appear as grayscale images showing bone structures. "
-                "Reply with ONLY the word 'YES' or 'NO'."
+                "You are a medical imaging classification assistant. Carefully examine the attached image and determine whether it is an X-ray of the wrist, hand, or forearm. A wrist/hand/forearm X-ray typically: Is a grayscale radiographic image. Clearly shows bone structures such as the radius and ulna (forearm bones), carpal bones (wrist), metacarpals, or phalanges (fingers). May include an “R” or “L” marker indicating right or left side. Shows distinct skeletal anatomy rather than a blank, overexposed, or non-medical image. If the image clearly shows wrist, hand, or forearm bones in an X-ray format, respond with: YES If it does not clearly show these anatomical bone structures, respond with: NO Reply with ONLY the word 'YES' or 'NO'."
             )
             
             # Try up to 2 times (retry once if NO, since LLM can be inconsistent)
-            for attempt in range(2):
+            for attempt in range(1):
                 response = await client.chat.completions.create(
-                    model=settings.OPENAI_CHAT_MODEL,
+                    model=settings.OPENAI_FRACTURE_CLASSIFY_MODEL,
                     messages=[
                         {
                             "role": "user",
@@ -151,13 +147,13 @@ class FractureDetectionService:
                                     "type": "image_url",
                                     "image_url": {
                                         "url": f"data:image/jpeg;base64,{base64_image}",
-                                        "detail": "high"
+                                        "detail": "low"
                                     }
                                 }
                             ]
                         }
                     ],
-                    max_tokens=10
+                    max_tokens=5
                 )
                 
                 result_text = response.choices[0].message.content.strip().upper()
@@ -178,7 +174,7 @@ class FractureDetectionService:
             return True
 
     # ─── Step 2: YOLO fracture detection ────────────────────────────────
-    async def detect_fracture(self, image_bytes: bytes, db=None, notes: str = None) -> FractureDetectionResponse:
+    async def detect_fracture(self, image_bytes: bytes, db=None, notes: str = None) -> FractureDetectionData:
         """
         Detect fractures in the provided image bytes using YOLO model,
         then send annotated results to OpenAI for medical analysis (Step 3).
@@ -189,7 +185,7 @@ class FractureDetectionService:
             notes: Optional patient notes (allergies, medical history, etc.)
             
         Returns:
-            FractureDetectionResponse: The detection results with AI analysis
+            FractureDetectionData: The detection results with AI analysis
         """
         start_time = time.time()
         
@@ -245,7 +241,7 @@ class FractureDetectionService:
             
             processing_time_ms = (time.time() - start_time) * 1000
             
-            return FractureDetectionResponse(
+            return FractureDetectionData(
                 has_fracture=has_fracture,
                 detections=detections,
                 annotated_image_base64=annotated_image_base64,
@@ -360,7 +356,7 @@ Note: Please only provide feedback in JSON format as follows:
 }}"""
 
             response = await client.chat.completions.create(
-                model=settings.OPENAI_CHAT_MODEL,
+                model=settings.OPENAI_FRACTURE_DETECTION_MODEL,
                 messages=[
                     {
                         "role": "user",
@@ -370,13 +366,13 @@ Note: Please only provide feedback in JSON format as follows:
                                 "type": "image_url",
                                 "image_url": {
                                     "url": f"data:image/jpeg;base64,{annotated_image_base64}",
-                                    "detail": "high"
+                                    "detail": "low"
                                 }
                             }
                         ]
                     }
                 ],
-                max_tokens=1000
+                # max_tokens=1000
             )
             
             raw_text = response.choices[0].message.content.strip()

@@ -17,8 +17,10 @@ label_feedback_dto = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(label_feedback_dto)
 
 LabelFeedbackRequest = label_feedback_dto.LabelFeedbackRequest
+LabelFeedbackData = label_feedback_dto.LabelFeedbackData
 LabelFeedbackResponse = label_feedback_dto.LabelFeedbackResponse
 LabelImageRequest = label_feedback_dto.LabelImageRequest
+LabelImageData = label_feedback_dto.LabelImageData
 LabelImageResponse = label_feedback_dto.LabelImageResponse
 
 # Dynamic import for Service
@@ -32,26 +34,26 @@ label_feedback_service = label_feedback_service_module.label_feedback_service
 
 router = APIRouter()
 
-@router.post("/label-description", response_model=ApiResponse[LabelFeedbackResponse])
+@router.post("/label-description", response_model=LabelFeedbackResponse)
 async def label_description(request: LabelFeedbackRequest):
     """
     Analyze text feedback and return label predictions.
     """
     try:
         results = label_feedback_service.predict(request.text)
-        data = LabelFeedbackResponse(results=results)
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        data = LabelFeedbackData(results=results)
+        return LabelFeedbackResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
-@router.post("/label-image", response_model=ApiResponse[LabelImageResponse])
+@router.post("/label-image", response_model=LabelImageResponse)
 async def label_image(request: LabelImageRequest):
     """
     Analyze image and return detailed description.
     """
     try:
         description = label_feedback_service.describe_image(request.image_url)
-        data = LabelImageResponse(description=description)
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        data = LabelImageData(description=description)
+        return LabelImageResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except Exception as e:
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))

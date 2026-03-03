@@ -332,12 +332,12 @@ class ConversationMemoryService:
                 # Use raw SQL for pgvector cosine distance operator
                 sql = text("""
                     SELECT _id, role, content, created_at,
-                           1 - (embedding <=> :query_vec::vector) AS similarity
+                           1 - (embedding <=> CAST(:query_vec AS vector)) AS similarity
                     FROM ai_messages
                     WHERE conversation_id = :conv_id
                       AND deleted_at IS NULL
                       AND embedding IS NOT NULL
-                    ORDER BY embedding <=> :query_vec::vector
+                    ORDER BY embedding <=> CAST(:query_vec AS vector)
                     LIMIT :k
                 """)
                 

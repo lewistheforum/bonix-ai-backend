@@ -6,8 +6,10 @@ from typing import Optional, List, Dict, Any
 from app.dto.recommendation.recommendation_clinic_dto import (
     ClinicRecommendationRequest,
     PatientAppointmentRecommendationRequest,
+    RecommendationClinicData,
     RecommendationClinicResponse,
-    ClinicInfo
+    ClinicInfo,
+    ClinicInfoResponse
 )
 from app.services.recommendation.recommendation_clinic_service import recommendation_clinic_service
 from app.common.api_response import ApiResponse
@@ -18,7 +20,7 @@ from app.common.message.error_message import ErrorMessage
 router = APIRouter()
 
 
-@router.get("/clinics/{clinic_id}", response_model=ApiResponse[ClinicInfo])
+@router.get("/clinics/{clinic_id}", response_model=ClinicInfoResponse)
 async def get_clinic_by_id(clinic_id: str):
     """
     Get a specific clinic by its ID
@@ -44,14 +46,14 @@ async def get_clinic_by_id(clinic_id: str):
             created_at=clinic["created_at"],
             updated_at=clinic["updated_at"]
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return ClinicInfoResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.get("/clinics/{clinic_id}/similar", response_model=ApiResponse[RecommendationClinicResponse])
+@router.get("/clinics/{clinic_id}/similar", response_model=RecommendationClinicResponse)
 async def get_similar_clinics(clinic_id: str):
     """
     Get similar clinics based on a specific clinic's data for recommendation.
@@ -66,14 +68,14 @@ async def get_similar_clinics(clinic_id: str):
             raise HTTPException(status_code=StatusCode.NOT_FOUND, detail=ErrorMessage.CLINIC_NOT_FOUND)
         
         result = await recommendation_clinic_service.get_similar_clinics(clinic_id)
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=result)
+        return RecommendationClinicResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=result)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/clinics/recommend/patient-appointment", response_model=ApiResponse[RecommendationClinicResponse])
+@router.post("/clinics/recommend/patient-appointment", response_model=RecommendationClinicResponse)
 async def get_recommendations_from_patient_appointments(
     request: PatientAppointmentRecommendationRequest
 ):
@@ -97,7 +99,7 @@ async def get_recommendations_from_patient_appointments(
             clinic_ids=request.clinic_ids,
             limit=request.limit or 5
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=result)
+        return RecommendationClinicResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=result)
     except Exception as e:
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 

@@ -87,6 +87,8 @@ class Settings(BaseSettings):
     EMBEDDING_PROVIDER: Literal["openai", "gemini"] = Field(default="openai", validation_alias="EMBEDDING_PROVIDER")
 
     OPENAI_CHAT_MODEL: str = Field(default="gpt-4.1-mini", validation_alias="OPENAI_CHAT_MODEL")
+    OPENAI_FRACTURE_CLASSIFY_MODEL: str = Field(default="gpt-4o", validation_alias="OPENAI_CHAT_MODEL")
+    OPENAI_FRACTURE_DETECTION_MODEL: str = Field(default="gpt-4o", validation_alias="OPENAI_CHAT_MODEL")
     GEMINI_CHAT_MODEL: str = Field(default="gemini-2.5-flash", validation_alias="GEMINI_CHAT_MODEL")
     CONVERSATION_MEMORY_WINDOW: int = Field(default=10, validation_alias="CONVERSATION_MEMORY_WINDOW")
     

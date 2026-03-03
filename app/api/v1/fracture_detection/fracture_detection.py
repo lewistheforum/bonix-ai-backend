@@ -14,7 +14,7 @@ from app.services.fracture_detection.fracture_detection_service import fracture_
 
 router = APIRouter()
 
-@router.post("/detect", response_model=ApiResponse[FractureDetectionResponse])
+@router.post("/detect", response_model=FractureDetectionResponse)
 async def detect_fracture(
     file: UploadFile = File(...),
     notes: Optional[str] = Form(default=None, description="Patient notes: The patient has liver disease, diabetes, and an allergy to chicken., etc."),
@@ -57,7 +57,7 @@ async def detect_fracture(
         # Step 2 & 3: Detect fractures with YOLO, then analyze with OpenAI
         result = await fracture_detector.detect_fracture(image_bytes, db=db, notes=notes)
         
-        return ApiResponse(
+        return FractureDetectionResponse(
             statusCode=StatusCode.SUCCESS, 
             message=SuccessMessage.INDEX, 
             data=result

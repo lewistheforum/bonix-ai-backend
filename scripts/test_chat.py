@@ -9,7 +9,7 @@ def test_chat():
     
     # Simple query to trigger context retrieval
     data = {
-        "message": "what can you support?",
+        "message": "give me all doctors name in Bonix Spine Clinic Hai Phong in Cau Giay District Branch?",
         "conversation_id": None
     }
     

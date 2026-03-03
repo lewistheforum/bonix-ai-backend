@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image
 
 # Ensure app is importable
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.services.fracture_detection.yolo_patch import patch_ultralytics
 patch_ultralytics()
@@ -55,7 +55,8 @@ def main(image_path: str):
     print(f"Step 1 (classify) image: base64 length = {len(step1_b64)} chars")
 
     # ── Step 2: run YOLO detection ──
-    model_path = os.path.join(os.path.dirname(__file__), "app", "models", "huggingface", "wrist_fracture_model.pt")
+    from huggingface_hub import hf_hub_download
+    model_path = hf_hub_download(repo_id="lewisnguyn/wrist-fracture-detection", filename="fracture_model.pt")
     print(f"Loading YOLO model from {model_path}...")
     model = YOLO(model_path)
     results = model(step1_img)

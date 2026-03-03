@@ -31,7 +31,7 @@ class ChatbotRequest(BaseModel):
         }
 
 
-class ChatbotResponse(BaseModel):
+class ChatbotData(BaseModel):
     """Response DTO for chatbot"""
     response: str = Field(..., description="Chatbot response")
     conversation_id: str = Field(..., description="Conversation ID")
@@ -50,14 +50,26 @@ class ChatbotResponse(BaseModel):
                     "Get medication advice"
                 ],
                 "confidence_score": 0.82,
-                "generated_at": "2024-01-01T00:00:00"
             }
         }
 
 
-class ConversationHistoryResponse(BaseModel):
+class ChatbotResponse(BaseModel):
+    """Response wrapper for chatbot"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[ChatbotData] = Field(None, description="Response data")
+
+
+class ConversationHistoryData(BaseModel):
     """Response DTO for conversation history"""
     conversation_id: str = Field(..., description="Conversation ID")
     messages: List[ChatMessage] = Field(..., description="List of messages")
     total_messages: int = Field(..., description="Total number of messages")
+
+class ConversationHistoryResponse(BaseModel):
+    """Response wrapper for conversation history"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[ConversationHistoryData] = Field(None, description="Response data")
 

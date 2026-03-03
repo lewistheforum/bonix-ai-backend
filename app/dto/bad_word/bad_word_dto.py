@@ -45,7 +45,7 @@ class HateSpansResult(BaseModel):
     output_raw: Optional[str] = Field(None, description="Raw model output")
 
 
-class BadWordDetectionResponse(BaseModel):
+class BadWordDetectionData(BaseModel):
     """Response DTO for bad word detection"""
     text: str = Field(..., description="Original text analyzed")
     is_toxic: bool = Field(..., description="Overall toxicity flag")
@@ -80,6 +80,13 @@ class BadWordDetectionResponse(BaseModel):
         }
 
 
+class BadWordDetectionResponse(BaseModel):
+    """Response wrapper for bad word detection"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[BadWordDetectionData] = Field(None, description="Response data")
+
+
 class BatchBadWordDetectionRequest(BaseModel):
     """Request DTO for batch bad word detection"""
     texts: List[str] = Field(..., description="List of texts to analyze")
@@ -100,9 +107,15 @@ class BatchBadWordDetectionRequest(BaseModel):
         }
 
 
-class BatchBadWordDetectionResponse(BaseModel):
+class BatchBadWordDetectionData(BaseModel):
     """Response DTO for batch bad word detection"""
-    results: List[BadWordDetectionResponse] = Field(..., description="List of detection results")
+    results: List[BadWordDetectionData] = Field(..., description="List of detection results")
     total_analyzed: int = Field(..., description="Total number of texts analyzed")
     total_toxic: int = Field(..., description="Total number of toxic texts found")
     analyzed_at: datetime = Field(..., description="Analysis timestamp")
+
+class BatchBadWordDetectionResponse(BaseModel):
+    """Response wrapper for batch bad word detection"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[BatchBadWordDetectionData] = Field(None, description="Response data")

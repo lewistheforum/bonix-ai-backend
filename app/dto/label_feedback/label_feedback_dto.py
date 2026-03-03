@@ -20,9 +20,15 @@ class LabelFeedbackResult(BaseModel):
     label: str = Field(..., description="Predicted label")
     score: float = Field(..., description="Confidence score")
 
-class LabelFeedbackResponse(BaseModel):
+class LabelFeedbackData(BaseModel):
     """Response DTO for label feedback"""
     results: List[LabelFeedbackResult] = Field(..., description="List of top predictions")
+
+class LabelFeedbackResponse(BaseModel):
+    """Response wrapper for label feedback"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[LabelFeedbackData] = Field(None, description="Response data")
 
 class LabelImageRequest(BaseModel):
     """Request DTO for label image"""
@@ -35,6 +41,12 @@ class LabelImageRequest(BaseModel):
             }
         }
 
-class LabelImageResponse(BaseModel):
+class LabelImageData(BaseModel):
     """Response DTO for label image"""
     description: str = Field(..., description="Description of the image")
+
+class LabelImageResponse(BaseModel):
+    """Response wrapper for label image"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[LabelImageData] = Field(None, description="Response data")

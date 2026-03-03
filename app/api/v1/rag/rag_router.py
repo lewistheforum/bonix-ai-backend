@@ -16,20 +16,25 @@ from app.database import get_db
 from app.dto.rag import (
     RAGChatRequest,
     RAGChatResponse,
+    RAGChatData,
     KnowledgeBaseIngestRequest,
     KnowledgeBaseIngestResponse,
-    KnowledgeBaseSearchRequest,
+    KnowledgeBaseIngestData,
     KnowledgeBaseSearchResponse,
+    KnowledgeBaseSearchData,
     KnowledgeBaseSearchResult,
     SyncKnowledgeBaseRequest,
     SyncKnowledgeBaseResponse,
+    SyncKnowledgeBaseData,
     SyncMedicineKnowledgeBaseRequest,
     SyncMedicineKnowledgeBaseResponse,
-    ConversationHistoryRequest,
+    SyncMedicineKnowledgeBaseData,
     ConversationHistoryResponse,
+    ConversationHistoryData,
     MessageItem,
     ConversationChatRequest,
     ConversationChatResponse,
+    ConversationChatData
 )
 from app.services.rag.rag_chain import rag_chatbot
 from app.services.rag.hybrid_retriever import hybrid_retriever
@@ -48,11 +53,11 @@ from app.common.message.error_message import ErrorMessage
 router = APIRouter(prefix="/rag", tags=["RAG Chatbot"])
 
 
-@router.post("/chat", response_model=ApiResponse[RAGChatResponse])
+@router.post("/chat", response_model=RAGChatResponse)
 async def chat_rag(
     request: RAGChatRequest,
     db: AsyncSession = Depends(get_db)
-) -> ApiResponse[RAGChatResponse]:
+) -> RAGChatResponse:
     """
     Chat with RAG (Retrieval Augmented Generation).
     
@@ -71,27 +76,27 @@ async def chat_rag(
             user_id=request.user_id
         )
         
-        data = RAGChatResponse(
+        data = RAGChatData(
             response=result["response"],
             conversation_id=result["conversation_id"],
             context_used=result["context_used"],
             sources=result["sources"],
             timestamp=datetime.utcnow()
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return RAGChatResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"RAG Chat error: {e}")
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/conversation/{conversation_id}/{user_id}", response_model=ApiResponse[ConversationChatResponse])
+@router.post("/conversation/{conversation_id}/{user_id}", response_model=ConversationChatResponse)
 async def conversation_chat(
     conversation_id: str,
     user_id: str,
     request: ConversationChatRequest,
     db: AsyncSession = Depends(get_db)
-) -> ApiResponse[ConversationChatResponse]:
+) -> ConversationChatResponse:
     """
     Chat within a specific conversation with conversation-scoped RAG.
     
@@ -120,7 +125,7 @@ async def conversation_chat(
             message=request.message
         )
         
-        data = ConversationChatResponse(
+        data = ConversationChatData(
             response=result["response"],
             conversation_id=result["conversation_id"],
             context_used=result["context_used"],
@@ -128,18 +133,18 @@ async def conversation_chat(
             sources=result["sources"],
             timestamp=result["timestamp"]
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return ConversationChatResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Conversation chat error: {e}")
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/knowledge-base/ingest", response_model=ApiResponse[KnowledgeBaseIngestResponse])
+@router.post("/knowledge-base/ingest", response_model=KnowledgeBaseIngestResponse)
 async def ingest_documents(
     request: KnowledgeBaseIngestRequest,
     db: AsyncSession = Depends(get_db)
-) -> ApiResponse[KnowledgeBaseIngestResponse]:
+) -> KnowledgeBaseIngestResponse:
     """
     Ingest documents into the knowledge base.
     
@@ -160,12 +165,12 @@ async def ingest_documents(
         )
         await db.commit()
         
-        data = KnowledgeBaseIngestResponse(
+        data = KnowledgeBaseIngestData(
             success=True,
             documents_ingested=len(entries),
             message=f"Successfully ingested {len(entries)} documents"
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return KnowledgeBaseIngestResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Ingestion error: {e}")
@@ -173,13 +178,13 @@ async def ingest_documents(
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.get("/knowledge-base/search", response_model=ApiResponse[KnowledgeBaseSearchResponse])
+@router.get("/knowledge-base/search", response_model=KnowledgeBaseSearchResponse)
 async def search_knowledge_base(
     query: str = Query(..., description="Search query"),
     k: int = Query(default=5, ge=1, le=20),
     search_type: str = Query(default="hybrid", description="Search type: vector, keyword, or hybrid"),
     db: AsyncSession = Depends(get_db)
-) -> ApiResponse[KnowledgeBaseSearchResponse]:
+) -> KnowledgeBaseSearchResponse:
     """
     Search the knowledge base.
     
@@ -239,24 +244,24 @@ async def search_knowledge_base(
                 for r in retrieval_results
             ]
         
-        data = KnowledgeBaseSearchResponse(
+        data = KnowledgeBaseSearchData(
             query=query,
             results=results,
             total=len(results),
             search_type=search_type
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return KnowledgeBaseSearchResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Search error: {e}")
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/knowledge-base/sync", response_model=ApiResponse[SyncKnowledgeBaseResponse])
+@router.post("/knowledge-base/sync", response_model=SyncKnowledgeBaseResponse)
 async def sync_knowledge_base(
     request: SyncKnowledgeBaseRequest,
     db: AsyncSession = Depends(get_db)
-) -> ApiResponse[SyncKnowledgeBaseResponse]:
+) -> SyncKnowledgeBaseResponse:
     """
     Sync knowledge base with data from the main database.
     
@@ -317,7 +322,7 @@ async def sync_knowledge_base(
         total = (clinic_services + doctor_profiles + clinic_info + staff_info + 
                  blogs + feedbacks + user_info + doctor_schedules + clinic_working_hours)
         
-        data = SyncKnowledgeBaseResponse(
+        data = SyncKnowledgeBaseData(
             success=True,
             clinic_services_synced=clinic_services,
             doctor_profiles_synced=doctor_profiles,
@@ -331,7 +336,7 @@ async def sync_knowledge_base(
             total_synced=total,
             message=f"Successfully synced {total} documents to knowledge base"
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return SyncKnowledgeBaseResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Sync error: {e}")
@@ -339,11 +344,11 @@ async def sync_knowledge_base(
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.post("/knowledge-base/sync-medicines", response_model=ApiResponse[SyncMedicineKnowledgeBaseResponse])
+@router.post("/knowledge-base/sync-medicines", response_model=SyncMedicineKnowledgeBaseResponse)
 async def sync_medicine_knowledge_base(
     request: SyncMedicineKnowledgeBaseRequest,
     db: AsyncSession = Depends(get_db)
-) -> ApiResponse[SyncMedicineKnowledgeBaseResponse]:
+) -> SyncMedicineKnowledgeBaseResponse:
     """
     Sync medicine knowledge base from the medicines table.
     
@@ -365,7 +370,7 @@ async def sync_medicine_knowledge_base(
         
         await db.commit()
         
-        data = SyncMedicineKnowledgeBaseResponse(
+        data = SyncMedicineKnowledgeBaseData(
             success=True,
             therapeutic_classes_synced=result["therapeutic_classes_synced"],
             total_medicines_processed=result["total_medicines_processed"],
@@ -374,7 +379,7 @@ async def sync_medicine_knowledge_base(
                 f"({result['total_medicines_processed']} medicines) to knowledge base"
             )
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return SyncMedicineKnowledgeBaseResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"Medicine sync error: {e}")
@@ -382,12 +387,12 @@ async def sync_medicine_knowledge_base(
         raise HTTPException(status_code=StatusCode.INTERNAL_ERROR, detail=str(e))
 
 
-@router.get("/conversations/{conversation_id}/history", response_model=ApiResponse[ConversationHistoryResponse])
+@router.get("/conversations/{conversation_id}/history", response_model=ConversationHistoryResponse)
 async def get_conversation_history(
     conversation_id: str,
     limit: int = Query(default=50, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
-) -> ApiResponse[ConversationHistoryResponse]:
+) -> ConversationHistoryResponse:
     """
     Get conversation history.
     
@@ -425,12 +430,12 @@ async def get_conversation_history(
             for msg in messages
         ]
         
-        data = ConversationHistoryResponse(
+        data = ConversationHistoryData(
             conversation_id=conversation_id,
             messages=message_items,
             total=len(message_items)
         )
-        return ApiResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
+        return ConversationHistoryResponse(statusCode=StatusCode.SUCCESS, message=SuccessMessage.INDEX, data=data)
         
     except Exception as e:
         logger.error(f"History error: {e}")

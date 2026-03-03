@@ -45,15 +45,11 @@ SYSTEM_PROMPT = """You are a helpful medical assistant chatbot for the Bonix cli
 CRITICAL OUTPUT REQUIREMENT:
 Your entire response must be written strictly in HTML format.
 
-Allowed Tags ONLY: <div>, <p>, <ul>, <li>, and <strong>.
+Use tags like <div>, <p>, <ul>, <li>, <strong>, and <table> to structure your response.
 
-No Whitespace: Do not include any newlines (\n), tabs (\t), or extra indentation in your response. The output should be one continuous block of HTML.
+Do not include Markdown, plain text outside of tags, or backticks (```html).
 
-Prohibited: Do not use <html>, <body>, <h1>-<h6>, <table>, <span>, or any other tags.
-
-No Markdown: Do not use backticks (e.g., ```html), markdown bolding (**), or any other markdown syntax.
-
-No Plain Text: All text must be wrapped within the five allowed HTML tags.
+Ensure the output is clean and ready to be rendered in a web interface.
 
 Your specific knowledge base consists strictly of the following ingested data types:
 - Clinic Services (details, prices, clinics)
@@ -99,38 +95,29 @@ System Database Schema:
 Context from knowledge base:
 {context}
 
-FINAL REMINDER: Use ONLY <div>, <p>, <ul>, <li>, and <strong>. NO NEWLINES (\n) OR TABS (\t). Respond as a single line of HTML.
+FINAL REMINDER: Respond ONLY with HTML tags.
 .
 """
 
-# Router Prompt — instructs the LLM to return EXACT database type values AND entity filters
+# Router Prompt — instructs the LLM to return EXACT database type values
 ROUTER_PROMPT = """You are a query classifier for a medical chatbot.
+Classify the user's query into one or more of the following categories.
+You MUST return ONLY values from this exact list:
 
-TASK 1 - Classify the user's query into one or more categories from this EXACT list:
-- "clinic_services": Services, treatments, prices, packages, procedures.
-- "doctor_profile": Doctor information, bios, specialties, qualifications, experience.
-- "clinic_info": Clinic locations, addresses, branches, general descriptions, facilities.
-- "staff_info": Nursing staff, receptionists, support staff.
-- "blog_info": Health articles, tips, medical news, general knowledge.
-- "schedule_info": Doctor availability, working hours, shifts, doctor appointments.
-- "clinic_working_hours": Clinic working hours, clinic schedules, opening times.
-- "feedback": Reviews, ratings, patient feedback.
-- "user_info": User's own information, profile, history.
+- "clinic_services": Services, treatments, prices, packages, procedures (e.g., "braces price", "implant cost").
+- "doctor_profile": Doctor information, bios, specialties, qualifications, experience (e.g., "who is Dr. Smith", "best dentist").
+- "clinic_info": Clinic locations, addresses, branches, general descriptions, facilities (e.g., "where is the clinic", "clinic in Hanoi").
+- "staff_info": Nursing staff, receptionists, support staff (e.g., "nurse contact", "staff list").
+- "blog_info": Health articles, tips, medical news, general knowledge (e.g., "how to brush teeth", "root canal definition").
+- "schedule_info": Doctor availability, working hours, shifts, doctor appointments (e.g., "is Dr. Smith free today", "doctor schedule for next week").
+- "clinic_working_hours": Clinic working hours, clinic schedules, opening times (e.g., "open hours for Bonix", "schedule of Hai Phong clinic").
+- "feedback": Reviews, ratings, patient feedback (e.g., "is this doctor good", "clinic reviews").
+- "user_info": User's own information, profile, history (e.g., "my profile", "my details").
 - "general": Greetings, off-topic, or unclear queries.
 
-TASK 2 - Extract entity filters if the user mentions specific names:
-- "clinic_main": The main clinic name if mentioned (e.g., "Bonix Physical Therapy Clinic Da Nang").
-- "clinic_branch": The branch name if mentioned (e.g., "Tan Binh District Branch").
-- "doctor_name": The doctor name if mentioned (e.g., "Dr. Nguyen Van A").
-Only include a filter if the user explicitly mentions it. Do NOT guess.
-
-RESPONSE FORMAT: You MUST respond with a JSON object:
-{
-  "categories": ["doctor_profile"],
-  "entity_filters": {"clinic_main": "Bonix Physical Therapy Clinic Da Nang", "clinic_branch": "Tan Binh District Branch"}
-}
-If no entity filters are found, use an empty object: "entity_filters": {}
-Example for greeting: {"categories": ["general"], "entity_filters": {}}
+You MUST respond with a JSON object containing a single key "categories" whose value is an array of strings from the list above.
+Example: {"categories": ["clinic_services", "clinic_working_hours"]}
+Example for greeting: {"categories": ["general"]}
 """
 
 class RAGChatbot:
@@ -222,20 +209,18 @@ class RAGChatbot:
         """Deprecated: Use _classify_query instead."""
         return None
 
-    async def _classify_query(self, query: str) -> Dict[str, Any]:
+    async def _classify_query(self, query: str) -> List[str]:
         """
-        Classify the user's query into knowledge base categories and extract
-        entity-specific metadata filters using LLM with structured output.
+        Classify the user's query into knowledge base categories using LLM
+        with structured output (json_object) for reliable type matching.
         
         Args:
             query: User's query string
             
         Returns:
-            Dict with 'categories' (List[str]) and 'entity_filters' (Dict[str, str])
+            List of detected doc_types matching VALID_KB_TYPES
         """
         import json
-        
-        empty_result = {"categories": [], "entity_filters": {}}
         
         try:
             # Use a dedicated LLM instance with structured output for classification
@@ -256,85 +241,73 @@ class RAGChatbot:
             
             result = json.loads(content)
             
-            # Extract and validate categories
+            # Extract categories from structured response
             categories = result.get("categories", [])
+            
+            # Validate: only keep values that exist in VALID_KB_TYPES
             validated = [cat for cat in categories if cat in VALID_KB_TYPES]
             
-            # Extract entity filters (only keep non-empty string values)
-            raw_filters = result.get("entity_filters", {})
-            valid_filter_keys = {"clinic_main", "clinic_branch", "doctor_name"}
-            entity_filters = {
-                k: v for k, v in raw_filters.items()
-                if k in valid_filter_keys and isinstance(v, str) and v.strip()
-            }
-            
-            logger.info(f"Classified query '{query}' -> categories={validated}, entity_filters={entity_filters}")
-            return {"categories": validated, "entity_filters": entity_filters}
+            logger.info(f"Classified query '{query}' -> {validated}")
+            return validated
             
         except Exception as e:
             logger.error(f"Error classifying query: {e}")
-            return empty_result
+            return []
 
     async def _get_context(
         self,
         db: AsyncSession,
         query: str,
         k: int = 10,
-        classification: Optional[Dict[str, Any]] = None
+        categories: Optional[List[str]] = None
     ) -> str:
         """
         Retrieve relevant context from knowledge base.
         
-        Uses per-category retrieval for fair type representation and applies
-        entity-specific metadata filters (clinic_main, clinic_branch, doctor_name)
-        to ensure ALL matching documents are returned for targeted queries.
+        When multiple categories are detected, retrieves per-category to ensure
+        each type gets fair representation (prevents one dominant type from
+        drowning out others in the ranked results).
         
         Args:
             db: Database session
             query: User query
             k: Number of documents to retrieve per category
-            classification: Optional pre-classified result dict with 'categories' and 'entity_filters'
+            categories: Optional pre-classified categories
             
         Returns:
             Formatted context string
         """
         try:
+            # Use a nested transaction (savepoint) so that if retrieval fails (e.g. pgvector error),
+            # it doesn't abort the main transaction.
             async with db.begin_nested():
-                # CLASSIFY QUERY
-                if classification is not None:
-                    doc_types = classification.get("categories", [])
-                    entity_filters = classification.get("entity_filters", {})
-                else:
-                    result = await self._classify_query(query)
-                    doc_types = result.get("categories", [])
-                    entity_filters = result.get("entity_filters", {})
-                
-                # When entity filters are present, increase k to capture all matching docs
-                effective_k = k * 3 if entity_filters else k
+                # CLASSIFY QUERY AND APPLY FILTERS
+                doc_types = categories if categories is not None else await self._classify_query(query)
                 
                 all_results: List[RetrievalResult] = []
                 
                 if doc_types and len(doc_types) > 1:
                     # PER-CATEGORY RETRIEVAL: retrieve separately for each type
-                    per_type_k = max(3, effective_k // len(doc_types) + 1)
+                    # so each category gets fair representation
+                    per_type_k = max(3, k // len(doc_types) + 1)
                     seen_ids = set()
                     
                     for doc_type in doc_types:
-                        filter_metadata = {"type": doc_type, **entity_filters}
+                        filter_metadata = {"type": doc_type}
                         type_results = await hybrid_retriever.retrieve(db, query, per_type_k, filter_metadata)
                         
-                        for r in type_results:
-                            doc_id = str(r.document._id)
+                        for result in type_results:
+                            doc_id = str(result.document._id)
                             if doc_id not in seen_ids:
                                 seen_ids.add(doc_id)
-                                all_results.append(r)
+                                all_results.append(result)
                     
-                    logger.info(f"Per-category retrieval: {len(all_results)} unique results from {len(doc_types)} types (entity_filters={entity_filters})")
+                    logger.info(f"Per-category retrieval: {len(all_results)} unique results from {len(doc_types)} types")
                     
                 elif doc_types and len(doc_types) == 1:
-                    # Single category with entity filters
-                    filter_metadata = {"type": doc_types[0], **entity_filters}
-                    all_results = await hybrid_retriever.retrieve(db, query, effective_k, filter_metadata)
+                    # Single category — standard retrieval with filter
+                    filter_metadata = {"type": doc_types[0]}
+                    all_results = await hybrid_retriever.retrieve(db, query, k, filter_metadata)
                     
                 else:
                     # No categories (general query) — no filter
@@ -345,29 +318,19 @@ class RAGChatbot:
             
             # Format context from retrieved documents
             context_parts = []
-            seen_contents = set()
-            display_idx = 1
-            
-            for result in all_results:
+            for i, result in enumerate(all_results, 1):
                 doc = result.document
                 source = result.source
                 score = result.score
                 
-                # Deduplicate by content to prevent repeating identical data
-                content_text = doc.content.strip() if doc.content else ""
-                if content_text in seen_contents:
-                    continue
-                seen_contents.add(content_text)
-                
                 metadata_str = ""
                 if doc.meta_data:
-                    metadata_items = [f"{mk}: {mv}" for mk, mv in doc.meta_data.items() if mv]
+                    metadata_items = [f"{k}: {v}" for k, v in doc.meta_data.items() if v]
                     metadata_str = f" [{', '.join(metadata_items)}]" if metadata_items else ""
                 
                 context_parts.append(
-                    f"{display_idx}. {doc.content[:500]}...{metadata_str} (relevance: {score:.3f}, source: {source})"
+                    f"{i}. {doc.content[:500]}...{metadata_str} (relevance: {score:.3f}, source: {source})"
                 )
-                display_idx += 1
             
             
             context = "\n\n".join(context_parts)
@@ -421,14 +384,12 @@ class RAGChatbot:
             )
             
             # Classify query if context not manually provided
-            classification = None
             categories = None
             if not manual_context:
-                classification = await self._classify_query(query)
-                categories = classification.get("categories", [])
+                categories = await self._classify_query(query)
             
             # Retrieve relevant context (or use provided)
-            context = manual_context if manual_context else await self._get_context(db, query, classification=classification)
+            context = manual_context if manual_context else await self._get_context(db, query, categories=categories)
             
             # Run the agent with intent info
             result = await self._run_agent(query, chat_history, context, categories)

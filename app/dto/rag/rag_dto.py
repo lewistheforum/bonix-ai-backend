@@ -49,7 +49,7 @@ class RAGChatRequest(BaseModel):
         }
 
 
-class RAGChatResponse(BaseModel):
+class RAGChatData(BaseModel):
     """Response model for RAG chat endpoint."""
     
     response: str = Field(
@@ -78,9 +78,14 @@ class RAGChatResponse(BaseModel):
                 "conversation_id": "conv-uuid-123",
                 "context_used": True,
                 "sources": [{"doc_id": "doc-1", "score": 0.85}],
-                "timestamp": "2024-01-19T12:00:00Z"
             }
         }
+
+class RAGChatResponse(BaseModel):
+    """Response wrapper"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[RAGChatData] = Field(None, description="Response data")
 
 
 class KnowledgeBaseIngestRequest(BaseModel):
@@ -105,12 +110,18 @@ class KnowledgeBaseIngestRequest(BaseModel):
         }
 
 
-class KnowledgeBaseIngestResponse(BaseModel):
+class KnowledgeBaseIngestData(BaseModel):
     """Response model for knowledge base ingestion."""
     
     success: bool
     documents_ingested: int
     message: str
+
+class KnowledgeBaseIngestResponse(BaseModel):
+    """Response wrapper"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[KnowledgeBaseIngestData] = Field(None, description="Response data")
 
 
 class KnowledgeBaseSearchRequest(BaseModel):
@@ -143,13 +154,19 @@ class KnowledgeBaseSearchResult(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-class KnowledgeBaseSearchResponse(BaseModel):
+class KnowledgeBaseSearchData(BaseModel):
     """Response model for knowledge base search."""
     
     query: str
     results: List[KnowledgeBaseSearchResult]
     total: int
     search_type: str
+
+class KnowledgeBaseSearchResponse(BaseModel):
+    """Response wrapper"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[KnowledgeBaseSearchData] = Field(None, description="Response data")
 
 
 class SyncKnowledgeBaseRequest(BaseModel):
@@ -197,7 +214,7 @@ class SyncKnowledgeBaseRequest(BaseModel):
     )
 
 
-class SyncKnowledgeBaseResponse(BaseModel):
+class SyncKnowledgeBaseData(BaseModel):
     """Response model for knowledge base sync."""
     
     success: bool
@@ -213,6 +230,12 @@ class SyncKnowledgeBaseResponse(BaseModel):
     total_synced: int
     message: str
 
+class SyncKnowledgeBaseResponse(BaseModel):
+    """Response wrapper"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[SyncKnowledgeBaseData] = Field(None, description="Response data")
+
 
 class SyncMedicineKnowledgeBaseRequest(BaseModel):
     """Request model for syncing medicine knowledge base."""
@@ -223,13 +246,19 @@ class SyncMedicineKnowledgeBaseRequest(BaseModel):
     )
 
 
-class SyncMedicineKnowledgeBaseResponse(BaseModel):
+class SyncMedicineKnowledgeBaseData(BaseModel):
     """Response model for medicine knowledge base sync."""
     
     success: bool
     therapeutic_classes_synced: int
     total_medicines_processed: int
     message: str
+
+class SyncMedicineKnowledgeBaseResponse(BaseModel):
+    """Response wrapper"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[SyncMedicineKnowledgeBaseData] = Field(None, description="Response data")
 
 
 class ConversationHistoryRequest(BaseModel):
@@ -257,12 +286,18 @@ class MessageItem(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-class ConversationHistoryResponse(BaseModel):
+class ConversationHistoryData(BaseModel):
     """Response model for conversation history."""
     
     conversation_id: str
     messages: List[MessageItem]
     total: int
+
+class ConversationHistoryResponse(BaseModel):
+    """Response wrapper"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[ConversationHistoryData] = Field(None, description="Response data")
 
 
 class ConversationChatRequest(BaseModel):
@@ -286,7 +321,7 @@ class ConversationChatRequest(BaseModel):
         }
 
 
-class ConversationChatResponse(BaseModel):
+class ConversationChatData(BaseModel):
     """Response model for conversation chat endpoint."""
     
     response: str = Field(
@@ -320,6 +355,11 @@ class ConversationChatResponse(BaseModel):
                 "context_used": True,
                 "conversation_context_used": True,
                 "sources": [],
-                "timestamp": "2024-01-19T12:00:00Z"
             }
         }
+
+class ConversationChatResponse(BaseModel):
+    """Response wrapper"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[ConversationChatData] = Field(None, description="Response data")

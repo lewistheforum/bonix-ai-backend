@@ -65,8 +65,13 @@ class ClinicInfo(BaseModel):
     class Config:
         populate_by_name = True
 
+class ClinicInfoResponse(BaseModel):
+    """Response wrapper for a single clinic info"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[ClinicInfo] = Field(None, description="Response data")
 
-class RecommendationClinicResponse(BaseModel):
+class RecommendationClinicData(BaseModel):
     """Response DTO for clinic recommendation"""
     recommendationsClinicAdmins: List[ClinicInfo] = Field(..., description="List of recommended clinics")
     recommendationsClinicManagers: List[ClinicInfo] = Field(..., description="List of recommended clinics")
@@ -108,4 +113,11 @@ class RecommendationClinicResponse(BaseModel):
                 ]
             }
         }
+
+
+class RecommendationClinicResponse(BaseModel):
+    """Response wrapper for clinic recommendation"""
+    statusCode: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Response message")
+    data: Optional[RecommendationClinicData] = Field(None, description="Response data")
 

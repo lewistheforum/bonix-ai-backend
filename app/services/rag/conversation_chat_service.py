@@ -113,8 +113,9 @@ class ConversationChatService:
             set_schedule_db_session(db)
 
             # Classify query and get KB context
-            categories = await rag_chatbot._classify_query(message)
-            kb_context = await rag_chatbot._get_context(db, message, categories=categories)
+            classification = await rag_chatbot._classify_query(message)
+            categories = classification.get("categories", [])
+            kb_context = await rag_chatbot._get_context(db, message, classification=classification)
 
             # Combine contexts
             if combined_prefix:

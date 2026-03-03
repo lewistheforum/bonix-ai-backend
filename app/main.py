@@ -1,6 +1,9 @@
 """Main FastAPI application"""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.recommendation import recommendation_clinic
 from app.api.v1.bad_word import bad_word_detection
@@ -77,6 +80,28 @@ def create_application() -> FastAPI:
     async def health_check():
         data = {"status": "healthy"}
         return ApiResponse(statusCode=200, message="Success", data=data)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "statusCode": exc.status_code,
+                "message": str(exc.detail),
+                "data": None
+            }
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "statusCode": 422,
+                "message": "Validation Error",
+                "data": exc.errors()
+            }
+        )
 
     @app.on_event("startup")
     async def on_startup():
