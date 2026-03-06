@@ -56,21 +56,29 @@ class Settings(BaseSettings):
 
         return uri
 
+    DB_SSL: bool = Field(default=False, validation_alias="POSTGRES_SSL")
+
     @property
     def DATABASE_URL(self) -> str:
         """Construct PostgreSQL database URL"""
-        return (
+        url = (
             f"postgresql+psycopg_async://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
+        if self.DB_SSL:
+            url += "?sslmode=require"
+        return url
     
     @property
     def DATABASE_URL_SYNC(self) -> str:
         """Construct synchronous PostgreSQL database URL"""
-        return (
+        url = (
             f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
+        if self.DB_SSL:
+            url += "?sslmode=require"
+        return url
     
     # AI/ML settings
     AI_MODEL_PATH: Optional[str] = None
