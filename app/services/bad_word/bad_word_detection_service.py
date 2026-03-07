@@ -4,32 +4,54 @@ Bad Word Detection Service - Vietnamese bad word detection using ViHateT5 model
 import os
 import sys
 import unicodedata
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import requests
+import time
 from app.config import settings
 
 from app.utils.logger import logger
 
-
 class VietnameseBadWordDetector:
-    """Core detector class using ViHateT5 model"""
+    """Core detector class using HuggingFace Inference API"""
     
     def __init__(self, model_path="lewisnguyn/bonix-bad-words-detection", token=None):
         """
-        Initialize with pre-trained model or your fine-tuned model
+        Initialize with local transformers pipeline
         Args:
-            model_path: HuggingFace model ID or local path
+            model_path: HuggingFace model ID
             token: HuggingFace token for private models
         """
+        from transformers import pipeline
+        
         # If token is not provided, try to get it from environment
         if token is None:
             token = settings.HF_TOKEN
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path, token=token)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_path, token=token)
-
+        logger.info(f"Loading local transformers pipeline for {model_path}...")
+        self.pipe = pipeline("text2text-generation", model=model_path, token=token)
+        self.is_ready = True
+        
     def check_model_status(self) -> bool:
-        """Check if model and tokenizer are loaded"""
-        return self.model is not None and self.tokenizer is not None
+        """Check if local model is loaded"""
+        return getattr(self, "is_ready", False)
+
+    def _query_api(self, payload):
+        inputs = payload.get("inputs", "")
+        parameters = payload.get("parameters", {})
+        try:
+            result = self.pipe(inputs, **parameters)
+            
+            # Text2Text Generation models returning list with 'generated_text' dict
+            if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict) and "generated_text" in result[0]:
+                return result[0]["generated_text"]
+            elif isinstance(result, dict) and "generated_text" in result:
+                return result["generated_text"]
+            elif isinstance(result, list) and len(result) > 0 and isinstance(result[0], str):
+                return result[0]
+            else:
+                return str(result)
+        except Exception as e:
+            logger.error(f"Local model inference failed: {e}")
+            return ""
     
     def detect_hate_speech(self, text: str) -> dict:
         """
@@ -37,9 +59,10 @@ class VietnameseBadWordDetector:
         Returns: {"text": str, "label": str, "is_toxic": bool}
         """
         prefixed_input = "hate-speech-detection: " + text
-        input_ids = self.tokenizer.encode(prefixed_input, return_tensors="pt")
-        output_ids = self.model.generate(input_ids, max_length=256)
-        output = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        try:
+            output = self._query_api({"inputs": prefixed_input, "parameters": {"max_new_tokens": 256}})
+        except Exception:
+            output = ""
 
         is_toxic = any(tag in output.upper() for tag in ["[HATE]", "[OFFENSIVE]", "[TOXIC]"])
         
@@ -55,9 +78,10 @@ class VietnameseBadWordDetector:
         Returns: {"text": str, "label": str, "is_toxic": bool}
         """
         prefixed_input = "toxic-speech-detection: " + text
-        input_ids = self.tokenizer.encode(prefixed_input, return_tensors="pt")
-        output_ids = self.model.generate(input_ids, max_length=256)
-        output = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        try:
+            output = self._query_api({"inputs": prefixed_input, "parameters": {"max_new_tokens": 256}})
+        except Exception:
+            output = ""
 
         is_toxic = any(tag in output.upper() for tag in ["TOXIC"])
 
@@ -73,10 +97,11 @@ class VietnameseBadWordDetector:
         Returns: {"text": str, "bad_words": list, "indices": list}
         """
         prefixed_input = "hate-spans-detection: " + text
-        input_ids = self.tokenizer.encode(prefixed_input, return_tensors="pt")
-        output_ids = self.model.generate(input_ids, max_length=256)
-        output = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
-        
+        try:
+            output = self._query_api({"inputs": prefixed_input, "parameters": {"max_new_tokens": 256}})
+        except Exception:
+            output = ""
+            
         # Extract hate spans from output
         bad_words, indices = self._extract_hate_spans(text, output)
         

@@ -6,12 +6,15 @@ import numpy as np
 import os
 import zipfile
 import py_vncorenlp
+import time
 
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoProcessor, AutoModelForCausalLM
 from PIL import Image
 import requests
+import io
+import base64
 from huggingface_hub import snapshot_download
 from app.config import settings
+from app.utils.logger import logger
 
 class LabelFeedbackService:
     def __init__(self, token=None):
@@ -22,33 +25,30 @@ class LabelFeedbackService:
         self.token = token if token else settings.HF_TOKEN
         
         # Label description model config
-        # self.MODEL_PATH = "lewisnguyn/bonix-feedback-model-description"
         self.MODEL_PATH = "lewisnguyn/bonix-feedback-model-description-v2"
         self.VNCORENLP_REPO = "lewisnguyn/bonix-model-vncorenlp"
         self.MAX_LENGTH = 256
         
-        self.tokenizer = None
-        self.model = None
         self.rdrsegmenter = None
         
         # Label image model config
         self.IMAGE_MODEL_PATH = "lewisnguyn/bonix-feedback-model-image"
-        self.image_model = None
-        self.image_processor = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        self.desc_pipe = None
+        self.img_pipe = None
         
         # Lazy load resources or load on init
         # For this implementation, we'll try to load on init but handle failures gracefully
         try:
-            self._load_resources()
+            self.rdrsegmenter = self._setup_vncorenlp()
         except Exception as e:
-            print(f"Warning: Failed to load LabelFeedbackService resources: {e}")
+            logger.warning(f"Failed to load LabelFeedbackService resources: {e}")
 
     # PREDICT DESCRIPTION LABEL SERVICE
     def _setup_vncorenlp(self):
         """Ensure VnCoreNLP is available from Hugging Face."""
         try:
-            print(f"Downloading/Loading VnCoreNLP from {self.VNCORENLP_REPO}...")
+            logger.info(f"Downloading/Loading VnCoreNLP from {self.VNCORENLP_REPO}...")
             
             # Use a local directory to avoid symlink issues with Java/VnCoreNLP
             # and use system cache to avoid cluttering project directory
@@ -62,10 +62,10 @@ class LabelFeedbackService:
             # Check if jar file exists
             jar_files = list(local_model_dir.rglob("VnCoreNLP-*.jar"))
             if not jar_files:
-                print("VnCoreNLP not found locally. Downloading from Hugging Face...")
+                logger.info("VnCoreNLP not found locally. Downloading from Hugging Face...")
                 zip_path = hf_hub_download(repo_id=self.VNCORENLP_REPO, filename="VnCoreNLP.zip", token=self.token)
                 
-                print(f"Extracting {zip_path} to {local_model_dir}...")
+                logger.info(f"Extracting {zip_path} to {local_model_dir}...")
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                     zip_ref.extractall(local_model_dir)
                     
@@ -78,30 +78,12 @@ class LabelFeedbackService:
             
             return py_vncorenlp.VnCoreNLP(save_dir=save_dir, annotators=["wseg"])
         except Exception as e:
-            print(f"Error setting up VnCoreNLP: {e}")
+            logger.error(f"Error setting up VnCoreNLP: {e}")
             return None
 
-    def _load_resources(self):
-        print(f"Loading model from {self.MODEL_PATH}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_PATH, token=self.token)
-        self.model = AutoModelForSequenceClassification.from_pretrained(self.MODEL_PATH, token=self.token)
-        self.model.eval() # Set to eval mode
-        
-        print("Initializing VnCoreNLP...")
-        self.rdrsegmenter = self._setup_vncorenlp()
+
 
     def predict(self, text):
-        if not self.tokenizer or not self.model:
-            self._load_resources()
-            
-        if not self.tokenizer or not self.model:
-             raise Exception("Model not loaded")
-
-        # Use labels from model config
-        id2label = self.model.config.id2label
-        if not id2label:
-            raise Exception("Model config does not contain 'id2label'. Cannot map predictions.")
-
         if self.rdrsegmenter is None:
              self.rdrsegmenter = self._setup_vncorenlp()
              if self.rdrsegmenter is None:
@@ -110,30 +92,37 @@ class LabelFeedbackService:
         # Segmentation
         sentences = self.rdrsegmenter.word_segment(text)
         text_segmented = " ".join(sentences)
-        # print(f"Segmented Text: {text_segmented}")
 
-        # Tokenization
-        inputs = self.tokenizer(
-            text_segmented, 
-            return_tensors="pt", 
-            truncation=True, 
-            padding="max_length", 
-            max_length=self.MAX_LENGTH
-        )
-
-        # Inference
-        with torch.no_grad():
-            outputs = self.model(**inputs)
+        # Local Inference API approach
+        try:
+            if not self.desc_pipe:
+                from transformers import pipeline
+                logger.info(f"Loading local description model {self.MODEL_PATH}...")
+                self.desc_pipe = pipeline("text-classification", model=self.MODEL_PATH, token=self.token, top_k=None)
+            response = self.desc_pipe(text_segmented)
+        except Exception as e:
+            logger.error(f"Local inference failed: {e}")
+            return []
         
-        logits = outputs.logits.detach().numpy()[0]
-        probs = 1 / (1 + np.exp(-logits))
+        if not response:
+            return []
+            
+        # API returns list of lists: [[{"label": "...", "score": 0.9}, ...]]
+        scores_list = response[0] if isinstance(response, list) and len(response) > 0 and isinstance(response[0], list) else response
         
-        # Collect all predictions > 10%
+        if not isinstance(scores_list, list):
+            logger.error(f"Unexpected API response format: {response}")
+            return []
+            
+        # Collect all predictions > 25%
         predictions = []
-        for idx, prob in enumerate(probs):
+        for item in scores_list:
+            if not isinstance(item, dict) or "label" not in item or "score" not in item:
+                continue
+            prob = item["score"]
             if prob > 0.25:
-                label_name = id2label[str(idx)] if str(idx) in id2label else id2label[idx]
-                predictions.append({"label": label_name, "score": float(prob)})
+                # The API typically returns the label name directly from id2label
+                predictions.append({"label": item["label"], "score": float(prob)})
         
         # Sort by probability descending
         predictions.sort(key=lambda x: x["score"], reverse=True)
@@ -144,7 +133,6 @@ class LabelFeedbackService:
         
         for pred in predictions:
             label = pred["label"]
-            # Get prefix (part before the first colon, or the whole label if no colon)
             prefix = label.split(":", 1)[0]
             
             if prefix not in seen_prefixes:
@@ -153,51 +141,47 @@ class LabelFeedbackService:
         
         return unique_predictions
 
-    # PREDICT IMAGE LABEL SERVICE
-    def _load_image_resources(self):
-        print(f"Loading image model from {self.IMAGE_MODEL_PATH}...")
-        self.image_model = AutoModelForCausalLM.from_pretrained(self.IMAGE_MODEL_PATH, trust_remote_code=True, token=self.token).to(self.device).eval()
-        self.image_processor = AutoProcessor.from_pretrained(self.IMAGE_MODEL_PATH, trust_remote_code=True, token=self.token)
-    
     def check_model_status(self) -> dict:
         """Check status of all models"""
-        status = {
-            "description_model": self.model is not None and self.tokenizer is not None,
+        return {
+            "description_model": self.desc_pipe is not None,
             "vncorenlp": self.rdrsegmenter is not None,
-            "image_model": False # Lazy loaded usually, but let's check if loaded or try to load?
+            "image_model": self.img_pipe is not None
         }
-        
-        # Check image model if it was attempted to load
-        if self.image_model is not None and self.image_processor is not None:
-            status["image_model"] = True
-            
-        return status
 
     def describe_image(self, img_path):
-        if not self.image_model or not self.image_processor:
-             self._load_image_resources()
-             
         if img_path.startswith("http"):
-            image = Image.open(requests.get(img_path, stream=True).raw).convert('RGB')
+            image_data = requests.get(img_path).content
         else:
-            image = Image.open(img_path).convert('RGB')
+            with open(img_path, "rb") as f:
+                image_data = f.read()
 
-        # Prompt đặc biệt của Microsoft để lấy mô tả chi tiết
-        prompt = "<MORE_DETAILED_CAPTION>"
-
-        inputs = self.image_processor(text=prompt, images=image, return_tensors="pt").to(self.device)
-
-        generated_ids = self.image_model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=1024,
-            do_sample=False,
-            num_beams=3,
-        )
-        generated_text = self.image_processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-        parsed_answer = self.image_processor.post_process_generation(generated_text, task=prompt, image_size=(image.width, image.height))
-
-        return parsed_answer[prompt]
+        try:
+            if not self.img_pipe:
+                from transformers import pipeline
+                logger.info(f"Loading local image model {self.IMAGE_MODEL_PATH}...")
+                self.img_pipe = pipeline("image-to-text", model=self.IMAGE_MODEL_PATH, token=self.token)
+            
+            from PIL import Image
+            import io
+            image = Image.open(io.BytesIO(image_data)).convert('RGB')
+            
+            # The prompt can be passed if supported, but typically image-to-text pipelines take just the image
+            # Try with prompt first, fallback to without prompt if model doesn't support it
+            prompt = "<MORE_DETAILED_CAPTION>"
+            try:
+                response = self.img_pipe(image, prompt=prompt)
+            except Exception:
+                response = self.img_pipe(image)
+            
+            if isinstance(response, list) and len(response) > 0 and isinstance(response[0], dict) and "generated_text" in response[0]:
+                return response[0]["generated_text"]
+            elif isinstance(response, dict) and "generated_text" in response:
+                return response["generated_text"]
+            return str(response)
+        except Exception as e:
+            logger.error(f"Image inference failed: {e}")
+            return f"Failed to describe image via local model: {str(e)}"
 
 # Create a singleton instance
 label_feedback_service = LabelFeedbackService()
